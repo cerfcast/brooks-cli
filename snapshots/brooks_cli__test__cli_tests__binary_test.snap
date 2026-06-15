@@ -1,0 +1,20 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - compile
+    - "--path"
+    - tests/binary.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+Binary Expression:
+	Left:
+		Literal: true
+	Operation: <
+	Right:
+		Literal: false
+
+----- stderr -----
