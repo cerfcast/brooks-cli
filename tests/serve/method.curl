@@ -1,0 +1,1 @@
+curl http://localhost:8080/this/is/a/test?and_query --json '{ "expr": "req^method" }'

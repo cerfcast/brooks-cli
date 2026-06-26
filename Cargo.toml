@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+actix-web = "4.14.0"
 brooks-lib = { path = "lib" }
 clap = { version = "4.6.1", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 insta = "1.48.0"
 insta-cmd = "0.6.0"
+serde = "1.0.228"
+serde_json = "1.0.150"
+tokio = { version = "1.52.3", features = ["rt", "macros"] }

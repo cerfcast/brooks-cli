@@ -25,6 +25,8 @@ use brooks_lib::{
 };
 use clap::{CommandFactory, Parser, Subcommand};
 
+mod serve;
+
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -41,14 +43,21 @@ enum Commands {
         #[arg(long)]
         path: clio::ClioPath,
     },
+    Serve {
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "8080")]
+        port: u16,
+    },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum CliError {
     BadPath,
     CouldNotRead,
     AnalysisError(MelAnalysisLocatableError),
     InterpreterError(MelInterpLocatableError),
+    ServerError(std::io::Error),
 }
 pub type CliResult<T> = Result<T, CliError>;
 
@@ -172,7 +181,8 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
     Ok(())
 }
 
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     let result = match Cli::parse() {
         Cli {
             command: Commands::Compile { path },
@@ -180,6 +190,11 @@ fn main() {
         Cli {
             command: Commands::Interpret { path },
         } => compile_and_interpret(path),
+        Cli {
+            command: Commands::Serve { host, port },
+        } => serve::serve(host, port)
+            .await
+            .map_err(CliError::ServerError),
     };
 
     if let Err(e) = result {
