@@ -1,9 +1,12 @@
-use std::{collections::HashMap,sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 use brooks_lib::{
     analysis,
-    interp::{self, BuiltinFunction, PathElementBuiltin, StructValue, TypedValue, Value},
+    interpreter::{
+        self, StructValue, TypedValue, Value, builtins::BuiltinFunction,
+        builtins::Path_ElementBuiltin,
+    },
     scope::Scopes,
     tvs::{Struct, Type},
 };
@@ -20,7 +23,7 @@ async fn index(
     payload: web::Json<Mel>,
     peer: PeerAddr,
 ) -> actix_web::Result<String> {
-    let path_element_builtin = PathElementBuiltin {};
+    let path_element_builtin = Path_ElementBuiltin {};
 
     let clientip = peer.0.ip();
     let clientport = peer.0.port();
@@ -182,7 +185,7 @@ async fn index(
 
     let compiled = analysis::compile_and_analyze(&payload.expr, analysis_scopes)
         .map_err(|e| actix_web::error::ErrorBadRequest(std::io::Error::other(e.to_string())))?;
-    let value = interp::interpret(&compiled, interp_scopes)
+    let value = interpreter::interpret(&compiled, interp_scopes)
         .map_err(|e| actix_web::error::ErrorBadRequest(std::io::Error::other(e.to_string())))?;
 
     Ok(format!("{}", value))

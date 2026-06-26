@@ -15,9 +15,9 @@ use brooks_lib::{
     ast::AstVisitorDriver,
     compiler::{CompilerError, MELCompilerContext, SyntaxError::EmptyContext, compile},
     expect_expr,
-    interp::{
-        self, BuiltinFunction, MelInterpLocatableError, PathElementBuiltin, StructValue,
-        TypedValue, Value,
+    interpreter::{
+        self, MelInterpLocatableError, StructValue, TypedValue, Value, builtins::BuiltinFunction,
+        builtins::Path_ElementBuiltin,
     },
     scope::Scopes,
     serializer::{AstTextSerializer, AstTextSerializerContext},
@@ -114,7 +114,7 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
 
     analysis_scopes = analysis_scopes.insert("req", Type::Struct(reqs.clone()));
 
-    let path_element_builtin = PathElementBuiltin {};
+    let path_element_builtin = Path_ElementBuiltin {};
 
     analysis_scopes = analysis_scopes.insert(
         &path_element_builtin.name(),
@@ -174,7 +174,8 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
     let compiled =
         analysis::compile_and_analyze(&String::from_utf8_lossy(&to_parse), analysis_scopes)
             .map_err(CliError::AnalysisError)?;
-    let value = interp::interpret(&compiled, interp_scopes).map_err(CliError::InterpreterError)?;
+    let value =
+        interpreter::interpret(&compiled, interp_scopes).map_err(CliError::InterpreterError)?;
 
     println!("{}", value);
 
