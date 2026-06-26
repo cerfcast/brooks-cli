@@ -3,18 +3,13 @@ source: src/test.rs
 info:
   program: brooks-cli
   args:
-    - compile
+    - interpret
     - "--path"
-    - tests/simple.mel
+    - tests/function_name.mel
 ---
 success: true
 exit_code: 0
 ----- stdout -----
-Binary Expression:
-	Left:
-		Literal: testing
-	Operation: concat
-	Right:
-		Literal: one
+Function: path_element
 
 ----- stderr -----

@@ -25,4 +25,40 @@ mod cli_tests {
             "tests/binary.mel"
         ]));
     }
+
+    #[test]
+    fn interp_test_path_element() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "interpret",
+            "--path",
+            "tests/path_element.mel"
+        ]));
+    }
+
+    #[test]
+    fn interp_test_path_element_name() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "interpret",
+            "--path",
+            "tests/function_name.mel"
+        ]));
+    }
+
+    #[test]
+    fn interp_test_reqs_name() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "interpret",
+            "--path",
+            "tests/struct_name.mel"
+        ]));
+    }
+
+    #[test]
+    fn interp_test_reqs() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "interpret",
+            "--path",
+            "tests/reqs.mel"
+        ]));
+    }
 }
