@@ -4,8 +4,8 @@ use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 use brooks_lib::{
     analysis,
     interpreter::{
-        self, StructValue, TypedValue, Value, builtins::BuiltinFunction,
-        builtins::Path_ElementBuiltin,
+        self, StructValue, TypedValue, Value,
+        builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
     },
     scope::Scopes,
     tvs::{Struct, Type},
@@ -24,6 +24,7 @@ async fn index(
     peer: PeerAddr,
 ) -> actix_web::Result<String> {
     let path_element_builtin = Path_ElementBuiltin {};
+    let boolean_builtin = BooleanBuiltin {};
 
     let clientip = peer.0.ip();
     let clientport = peer.0.port();
@@ -71,6 +72,14 @@ async fn index(
         Type::Function(
             Arc::new(path_element_builtin.return_type()),
             path_element_builtin.parameters(),
+        ),
+    );
+
+    analysis_scopes = analysis_scopes.insert(
+        &boolean_builtin.name(),
+        Type::Function(
+            Arc::new(boolean_builtin.return_type()),
+            boolean_builtin.parameters(),
         ),
     );
 
@@ -179,6 +188,16 @@ async fn index(
             tipe: Type::Function(
                 Arc::new(path_element_builtin.return_type()),
                 path_element_builtin.parameters(),
+            ),
+        },
+    );
+    interp_scopes = interp_scopes.insert(
+        &boolean_builtin.name(),
+        TypedValue {
+            value: Value::Function(Arc::new(boolean_builtin.clone())),
+            tipe: Type::Function(
+                Arc::new(boolean_builtin.return_type()),
+                boolean_builtin.parameters(),
             ),
         },
     );

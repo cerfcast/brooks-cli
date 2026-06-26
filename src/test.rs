@@ -61,4 +61,13 @@ mod cli_tests {
             "tests/reqs.mel"
         ]));
     }
+
+    #[test]
+    fn interp_test_boolean_builtin() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "interpret",
+            "--path",
+            "tests/boolean.mel"
+        ]));
+    }
 }

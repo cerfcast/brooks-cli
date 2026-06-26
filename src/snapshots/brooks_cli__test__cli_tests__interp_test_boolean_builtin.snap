@@ -1,0 +1,15 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - interpret
+    - "--path"
+    - tests/boolean.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+false
+
+----- stderr -----

@@ -16,8 +16,8 @@ use brooks_lib::{
     compiler::{CompilerError, MELCompilerContext, SyntaxError::EmptyContext, compile},
     expect_expr,
     interpreter::{
-        self, MelInterpLocatableError, StructValue, TypedValue, Value, builtins::BuiltinFunction,
-        builtins::Path_ElementBuiltin,
+        self, MelInterpLocatableError, StructValue, TypedValue, Value,
+        builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
     },
     scope::Scopes,
     serializer::{AstTextSerializer, AstTextSerializerContext},
@@ -115,12 +115,21 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
     analysis_scopes = analysis_scopes.insert("req", Type::Struct(reqs.clone()));
 
     let path_element_builtin = Path_ElementBuiltin {};
+    let boolean_builtin = BooleanBuiltin {};
 
     analysis_scopes = analysis_scopes.insert(
         &path_element_builtin.name(),
         Type::Function(
             Arc::new(path_element_builtin.return_type()),
             path_element_builtin.parameters(),
+        ),
+    );
+
+    analysis_scopes = analysis_scopes.insert(
+        &boolean_builtin.name(),
+        Type::Function(
+            Arc::new(boolean_builtin.return_type()),
+            boolean_builtin.parameters(),
         ),
     );
 
@@ -167,6 +176,17 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
             tipe: Type::Function(
                 Arc::new(path_element_builtin.return_type()),
                 path_element_builtin.parameters(),
+            ),
+        },
+    );
+
+    interp_scopes = interp_scopes.insert(
+        &boolean_builtin.name(),
+        TypedValue {
+            value: Value::Function(Arc::new(boolean_builtin.clone())),
+            tipe: Type::Function(
+                Arc::new(boolean_builtin.return_type()),
+                boolean_builtin.parameters(),
             ),
         },
     );
