@@ -23,6 +23,8 @@ async fn index(
     payload: web::Json<Mel>,
     peer: PeerAddr,
 ) -> actix_web::Result<String> {
+    println!("Serving request from {peer}");
+
     let path_element_builtin = Path_ElementBuiltin {};
     let boolean_builtin = BooleanBuiltin {};
 
