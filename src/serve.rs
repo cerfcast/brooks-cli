@@ -195,8 +195,12 @@ pub async fn serve(ip: String, port: u16) -> std::io::Result<()> {
     use actix_web::{App, HttpServer};
 
     println!("Serving on {}:{}", ip, port);
-    HttpServer::new(|| App::new().service(index))
-        .bind((ip, port))?
-        .run()
-        .await
+    HttpServer::new(|| {
+        App::new()
+            .wrap(actix_cors::Cors::permissive())
+            .service(index)
+    })
+    .bind((ip, port))?
+    .run()
+    .await
 }
