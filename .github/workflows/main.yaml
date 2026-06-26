@@ -1,0 +1,22 @@
+on: [push, pull_request]
+
+name: Continuous Integration
+
+jobs:
+  cli-tests:
+    name: Library Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - run: cargo build
+      - run: cargo test
+  cli-format-tests:
+    name: Library Format Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - run: cargo fmt
