@@ -4,17 +4,25 @@ use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 use brooks_lib::{
     analysis,
     interpreter::{
-        self, StructValue, TypedValue, Value,
+        self,
         builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
+        interpret::{MelInterpContext, StructValue, TypedValue, Value},
     },
+    logging::{LogLevel::Trace, LogMsgs},
     scope::Scopes,
     tvs::{Struct, Type},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 struct Mel {
     pub expr: String,
+}
+
+#[derive(Serialize)]
+struct MelResponse {
+    pub value: String,
+    pub log: LogMsgs,
 }
 
 #[post("/{tail:.*}")] // <- define path parameters
@@ -206,10 +214,23 @@ async fn index(
 
     let compiled = analysis::compile_and_analyze(&payload.expr, analysis_scopes)
         .map_err(|e| actix_web::error::ErrorBadRequest(std::io::Error::other(e.to_string())))?;
-    let value = interpreter::interpret(&compiled, interp_scopes)
-        .map_err(|e| actix_web::error::ErrorBadRequest(std::io::Error::other(e.to_string())))?;
 
-    Ok(format!("{}", value))
+    let mut interp_context = MelInterpContext::default();
+    interp_context = interp_context
+        .update_log(LogMsgs::new(Trace))
+        .update_scopes(interp_scopes);
+    match interpreter::interpret(&compiled, interp_context) {
+        (log, Ok(o)) => {
+            let result = MelResponse {
+                value: format!("{}", o),
+                log,
+            };
+            Ok(serde_json::to_string(&result).expect("Could not serialize the result"))
+        }
+        (_, Err(e)) => Err(actix_web::error::ErrorBadRequest(std::io::Error::other(
+            e.to_string(),
+        ))),
+    }
 }
 
 pub async fn serve(ip: String, port: u16) -> std::io::Result<()> {

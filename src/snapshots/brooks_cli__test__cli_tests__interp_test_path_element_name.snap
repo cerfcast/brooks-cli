@@ -11,5 +11,7 @@ success: true
 exit_code: 0
 ----- stdout -----
 Function: path_element
+Log:
+0 to 12: Evaluating identifier expression
 
 ----- stderr -----

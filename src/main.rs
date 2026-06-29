@@ -16,9 +16,11 @@ use brooks_lib::{
     compiler::{CompilerError, MELCompilerContext, SyntaxError::EmptyContext, compile},
     expect_expr,
     interpreter::{
-        self, MelInterpLocatableError, StructValue, TypedValue, Value,
+        self,
         builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
+        interpret::{MelInterpContext, MelInterpLocatableError, StructValue, TypedValue, Value},
     },
+    logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs},
     scope::Scopes,
     serializer::{AstTextSerializer, AstTextSerializerContext},
     tvs::{Struct, Type},
@@ -194,11 +196,28 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
     let compiled =
         analysis::compile_and_analyze(&String::from_utf8_lossy(&to_parse), analysis_scopes)
             .map_err(CliError::AnalysisError)?;
-    let value =
-        interpreter::interpret(&compiled, interp_scopes).map_err(CliError::InterpreterError)?;
 
-    println!("{}", value);
+    let mut interp_context = MelInterpContext::default();
 
+    interp_context = interp_context
+        .update_log(LogMsgs::new(Trace))
+        .update_scopes(interp_scopes);
+    match interpreter::interpret(&compiled, interp_context) {
+        (log, Ok(o)) => {
+            println!("{}", o);
+            println!("Log:");
+            println!(
+                "{}",
+                log.msgs(&LogMsgFormatter {
+                    newline: true,
+                    show_level: false
+                })
+            );
+        }
+        (_, Err(e)) => {
+            print!("Error: {e}");
+        }
+    };
     Ok(())
 }
 

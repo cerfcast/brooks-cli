@@ -11,5 +11,9 @@ success: true
 exit_code: 0
 ----- stdout -----
 to
+Log:
+0 to 36: Evaluating function call expression
+0 to 12: Evaluating identifier expression
+12 to 36: Evaluating argument list expression
 
 ----- stderr -----
