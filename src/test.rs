@@ -70,4 +70,28 @@ mod cli_tests {
             "tests/boolean.mel"
         ]));
     }
+
+    #[test]
+    fn analyze_test_errors() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/analysis_error.mel"
+        ]));
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/analysis_error2.mel"
+        ]));
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/analysis_error3.mel"
+        ]));
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/analysis_error4.mel"
+        ]));
+    }
 }

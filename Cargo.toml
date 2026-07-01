@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 actix-cors = "0.7.1"
 actix-web = "4.14.0"
+ansi_term = "0.12.1"
 brooks-lib = { path = "lib" }
 clap = { version = "4.6.1", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }

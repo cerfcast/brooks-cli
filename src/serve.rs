@@ -219,15 +219,21 @@ async fn index(
     interp_context = interp_context
         .update_log(LogMsgs::new(Trace))
         .update_scopes(interp_scopes);
+
     match interpreter::interpret(&compiled, interp_context) {
-        (log, Ok(o)) => {
-            let result = MelResponse {
-                value: format!("{}", o),
-                log,
-            };
-            Ok(serde_json::to_string(&result).expect("Could not serialize the result"))
-        }
-        (_, Err(e)) => Err(actix_web::error::ErrorBadRequest(std::io::Error::other(
+        Ok(o) => match o.val {
+            Some(val) => {
+                let result = MelResponse {
+                    value: format!("{}", val),
+                    log: o.log,
+                };
+                Ok(serde_json::to_string(&result).expect("Could not serialize the result"))
+            }
+            None => Err(actix_web::error::ErrorBadRequest(std::io::Error::other(
+                "After successful evaluation, the expression produced no value",
+            ))),
+        },
+        Err(e) => Err(actix_web::error::ErrorBadRequest(std::io::Error::other(
             e.to_string(),
         ))),
     }

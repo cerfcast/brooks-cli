@@ -1,0 +1,18 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - analyze
+    - "--path"
+    - tests/analysis_error.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+Could not analyze:
+[4;31m2[0m ~=...
+at "tests/analysis_error.mel":0,1
+Integer is not one of the expected types (Regex,String)
+
+----- stderr -----

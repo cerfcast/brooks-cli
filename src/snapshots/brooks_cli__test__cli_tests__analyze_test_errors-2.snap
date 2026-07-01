@@ -1,0 +1,18 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - analyze
+    - "--path"
+    - tests/analysis_error2.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+Could not analyze:
+...+ ([4;31mfalse[0m) +...
+at "tests/analysis_error2.mel":5,10
+Bool is not one of the expected types (Integer)
+
+----- stderr -----
