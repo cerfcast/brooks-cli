@@ -72,6 +72,25 @@ mod cli_tests {
     }
 
     #[test]
+    fn compile_test_errors() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/compile_error.mel"
+        ]));
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/compile_error2.mel"
+        ]));
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "analyze",
+            "--path",
+            "tests/compile_error3.mel"
+        ]));
+    }
+
+    #[test]
     fn analyze_test_errors() {
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "analyze",

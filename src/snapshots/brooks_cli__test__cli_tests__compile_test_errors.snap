@@ -1,0 +1,17 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - analyze
+    - "--path"
+    - tests/compile_error.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+[4mError:[0m Unknown identifier "eq":
+	[4;31meq[0m^in...
+	at "tests/compile_error.mel":0,2
+
+----- stderr -----

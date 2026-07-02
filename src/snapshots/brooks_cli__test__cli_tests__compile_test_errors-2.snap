@@ -1,0 +1,17 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - analyze
+    - "--path"
+    - tests/compile_error2.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+[4mError:[0m Unexpected token j:
+	...ng/[4;31mj[0m
+	at "tests/compile_error2.mel":9,10
+
+----- stderr -----

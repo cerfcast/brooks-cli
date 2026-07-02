@@ -1,0 +1,17 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - analyze
+    - "--path"
+    - tests/compile_error3.mel
+---
+success: true
+exit_code: 0
+----- stdout -----
+[4mError:[0m Missing identifier:
+	[4;31m[0m/te...
+	at "tests/compile_error3.mel":0,0
+
+----- stderr -----
