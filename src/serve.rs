@@ -1,7 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
-use brooks_lib::{
+
+use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
+use brooks_lib::mel::{
     analysis,
     compiler::compile,
     interpreter::{
@@ -9,7 +11,6 @@ use brooks_lib::{
         builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
         interpret::{MelInterpContext, StructValue, TypedValue, Value},
     },
-    logging::{LogLevel::Trace, LogMsgs},
     scope::Scopes,
     tvs::{Struct, Type},
 };

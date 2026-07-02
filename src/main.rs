@@ -11,7 +11,9 @@ use brooks_lib;
 #[cfg(test)]
 mod test;
 
-use brooks_lib::{
+use brooks_lib::logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs};
+
+use brooks_lib::mel::{
     analysis::{self, MelAnalysisError, MelAnalysisLocatableError},
     ast::AstVisitorDriver,
     compiler::compile,
@@ -21,7 +23,6 @@ use brooks_lib::{
         builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
         interpret::{MelInterpContext, MelInterpLocatableError, StructValue, TypedValue, Value},
     },
-    logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs},
     scope::Scopes,
     serializer::{AstTextSerializer, AstTextSerializerContext},
     tvs::{Struct, Type},
@@ -269,7 +270,6 @@ pub enum CliError {
 }
 pub type CliResult<T> = Result<T, CliError>;
 
-
 fn format_compiler_error(error: CompilerError, source: &str, path: &str) -> String {
     match error {
         CompilerError::SyntaxError(location, msg) => {
@@ -371,7 +371,6 @@ fn format_error(error: MelAnalysisLocatableError, source: &str, path: &str) -> S
         format_analysis_error(error, source, path)
     }
 }
-
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
