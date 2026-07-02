@@ -10,9 +10,8 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Could not analyze:
-... + [4;31mfalse[0m
-at "tests/analysis_error4.mel":4,9
-Bool is not one of the expected types (Integer)
+[4mError:[0m Bool is not one of the expected types (Integer):
+	... + [4;31mfalse[0m
+	at "tests/analysis_error4.mel":4,9
 
 ----- stderr -----
