@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 use brooks_lib::{
     analysis,
+    compiler::compile,
     interpreter::{
         self,
         builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
@@ -212,7 +213,16 @@ async fn index(
         },
     );
 
-    let compiled = analysis::compile_and_analyze(&payload.expr, analysis_scopes)
+    let result = match compile(&payload.expr) {
+        Ok(expr) => expr,
+        Err(e) => {
+            return Err(actix_web::error::ErrorBadRequest(std::io::Error::other(
+                format!("{:?}", e),
+            )));
+        }
+    };
+
+    let result = analysis::analyze(&result, analysis_scopes)
         .map_err(|e| actix_web::error::ErrorBadRequest(std::io::Error::other(e.to_string())))?;
 
     let mut interp_context = MelInterpContext::default();
@@ -220,7 +230,7 @@ async fn index(
         .update_log(LogMsgs::new(Trace))
         .update_scopes(interp_scopes);
 
-    match interpreter::interpret(&compiled, interp_context) {
+    match interpreter::interpret(&result, interp_context) {
         Ok(o) => match o.val {
             Some(val) => {
                 let result = MelResponse {

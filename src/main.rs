@@ -12,10 +12,10 @@ use brooks_lib;
 mod test;
 
 use brooks_lib::{
-    analysis::{self, MelAnalysisLocatableError},
+    analysis::{self, MelAnalysisError, MelAnalysisLocatableError},
     ast::AstVisitorDriver,
-    compiler::{CompilerError, MELCompilerContext, SyntaxError::EmptyContext, compile},
-    expect_expr,
+    compiler::compile,
+    compiler::compile::CompilerError,
     interpreter::{
         self,
         builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
@@ -56,6 +56,107 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         port: u16,
     },
+}
+
+#[allow(clippy::result_large_err)]
+fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
+    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
+
+    let mut to_parse: Vec<u8> = vec![];
+    f.read_to_end(&mut to_parse)
+        .map_err(|_| CliError::BadPath)?;
+
+    let source = &String::from_utf8_lossy(&to_parse);
+    let (analysis_scopes, _) = common_scopes();
+
+    let result = match compile(source) {
+        Ok(expr) => expr,
+        Err(e) => {
+            println!("{}", format_compiler_error(e, source, &path.to_string()));
+            return Ok(());
+        }
+    };
+
+    let result = analysis::analyze(&result, analysis_scopes);
+
+    match result {
+        Ok(r) => println!("Expression Type: {}", r.tipe().to_string()),
+        Err(e) => println!("{}", format_error(e, source, &path.to_string())),
+    };
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
+    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
+
+    let mut to_parse: Vec<u8> = vec![];
+    f.read_to_end(&mut to_parse)
+        .map_err(|_| CliError::BadPath)?;
+
+    let (analysis_scopes, interp_scopes) = common_scopes();
+
+    let source = &String::from_utf8_lossy(&to_parse);
+
+    let result = match compile(source) {
+        Ok(expr) => expr,
+        Err(e) => {
+            println!("{}", format_compiler_error(e, source, &path.to_string()));
+            return Ok(());
+        }
+    };
+
+    let analyzed = analysis::analyze(&result, analysis_scopes).map_err(CliError::AnalysisError)?;
+
+    let mut interp_context = MelInterpContext::default();
+
+    interp_context = interp_context
+        .update_log(LogMsgs::new(Trace))
+        .update_scopes(interp_scopes);
+    match interpreter::interpret(&analyzed, interp_context) {
+        Ok(o) => {
+            match o.val {
+                Some(o) => println!("{}", o),
+                None => println!("Value missing"),
+            }
+            println!("Log:");
+            println!(
+                "{}",
+                o.log.msgs(&LogMsgFormatter {
+                    newline: true,
+                    show_level: false
+                })
+            );
+        }
+        Err(e) => {
+            print!("Error: {e}");
+        }
+    };
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
+    let mut f = path.open().map_err(|_| CliError::BadPath)?;
+
+    let mut to_parse: Vec<u8> = vec![];
+    f.read_to_end(&mut to_parse)
+        .map_err(|_| CliError::BadPath)?;
+
+    let compile_result = compile(&String::from_utf8_lossy(&to_parse));
+    let ast = compile_result.expect("Compilation error");
+
+    let driver = AstVisitorDriver {};
+    let visitor = AstTextSerializer {};
+    let context = AstTextSerializerContext {
+        serialized: "".to_string(),
+        indent: 0,
+    };
+    let result = driver
+        .visit(&ast, &visitor, context)
+        .expect("Could not serialize");
+    println!("{}", result.serialized);
+    Ok(())
 }
 
 fn common_scopes() -> (Scopes<Type>, Scopes<TypedValue>) {
@@ -169,33 +270,6 @@ pub enum CliError {
 pub type CliResult<T> = Result<T, CliError>;
 
 #[allow(clippy::result_large_err)]
-fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
-    let mut f = path.open().map_err(|_| CliError::BadPath)?;
-
-    let mut to_parse: Vec<u8> = vec![];
-    f.read_to_end(&mut to_parse)
-        .map_err(|_| CliError::BadPath)?;
-
-    let compile_result = compile(&String::from_utf8_lossy(&to_parse));
-    let compiled = compile_result.expect("Compilation error");
-    let ast = expect_expr!(MELCompilerContext, compiled)
-        .ok_or(CompilerError::SyntaxError(EmptyContext))
-        .expect("Missing AST");
-
-    let driver = AstVisitorDriver {};
-    let visitor = AstTextSerializer {};
-    let context = AstTextSerializerContext {
-        serialized: "".to_string(),
-        indent: 0,
-    };
-    let result = driver
-        .visit(&ast, &visitor, context)
-        .expect("Could not serialize");
-    println!("{}", result.serialized);
-    Ok(())
-}
-
-#[allow(clippy::result_large_err)]
 fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
     let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
 
@@ -205,56 +279,27 @@ fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
 
     let source = &String::from_utf8_lossy(&to_parse);
     let (analysis_scopes, _) = common_scopes();
-    let result = analysis::compile_and_analyze(source, analysis_scopes);
+
+    let result = match compile(source) {
+        Ok(expr) => expr,
+        Err(e) => {
+            println!("{}", format_compiler_error(e, source, &path.to_string()));
+            return Ok(());
+        }
+    };
+
+    let result = analysis::analyze(&result, analysis_scopes);
 
     match result {
         Ok(r) => println!("Expression Type: {}", r.tipe().to_string()),
-        Err(e) => {
-            println!("Could not analyze:");
-            let context_len = 3usize;
-            let source_len = source.len();
-            let semantic_source_len = if source.ends_with("\n") {
-                source_len - 1
-            } else {
-                source_len
-            };
-
-            let error_start = e.location.start;
-            let error_end = error_start + e.location.extent;
-
-            let pre_error_start =
-                std::cmp::max(0, error_start as i64 - context_len as i64) as usize;
-            let pre_error_end = e.location.start;
-
-            let post_error_start = std::cmp::min(source_len, error_end);
-            let post_error_end = std::cmp::min(source_len, error_end + context_len);
-
-            let pre_context = &source[pre_error_start..pre_error_end];
-            let erroneous = &source[error_start..error_end];
-            let post_context = &source[post_error_start..post_error_end].trim_end_matches("\n");
-
-            if pre_error_start != 0 {
-                print!("...");
-            }
-            print!("{pre_context}");
-
-            print!("{}", Red.underline().paint(erroneous));
-
-            print!("{post_context}");
-            if post_error_end <= semantic_source_len {
-                print!("...");
-            }
-            println!();
-            println!("at {}:{},{}", path, error_start, error_end);
-            println!("{}", e.error);
-        }
+        Err(e) => println!("{}", format_error(e, source, &path.to_string())),
     };
     Ok(())
 }
 
 #[allow(clippy::result_large_err)]
 fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
-    let mut f = path.open().map_err(|_| CliError::BadPath)?;
+    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
 
     let mut to_parse: Vec<u8> = vec![];
     f.read_to_end(&mut to_parse)
@@ -262,16 +307,24 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
 
     let (analysis_scopes, interp_scopes) = common_scopes();
 
-    let compiled =
-        analysis::compile_and_analyze(&String::from_utf8_lossy(&to_parse), analysis_scopes)
-            .map_err(CliError::AnalysisError)?;
+    let source = &String::from_utf8_lossy(&to_parse);
+
+    let result = match compile(source) {
+        Ok(expr) => expr,
+        Err(e) => {
+            println!("{}", format_compiler_error(e, source, &path.to_string()));
+            return Ok(());
+        }
+    };
+
+    let analyzed = analysis::analyze(&result, analysis_scopes).map_err(CliError::AnalysisError)?;
 
     let mut interp_context = MelInterpContext::default();
 
     interp_context = interp_context
         .update_log(LogMsgs::new(Trace))
         .update_scopes(interp_scopes);
-    match interpreter::interpret(&compiled, interp_context) {
+    match interpreter::interpret(&analyzed, interp_context) {
         Ok(o) => {
             match o.val {
                 Some(o) => println!("{}", o),
@@ -290,6 +343,30 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
             print!("Error: {e}");
         }
     };
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
+    let mut f = path.open().map_err(|_| CliError::BadPath)?;
+
+    let mut to_parse: Vec<u8> = vec![];
+    f.read_to_end(&mut to_parse)
+        .map_err(|_| CliError::BadPath)?;
+
+    let compile_result = compile(&String::from_utf8_lossy(&to_parse));
+    let ast = compile_result.expect("Compilation error");
+
+    let driver = AstVisitorDriver {};
+    let visitor = AstTextSerializer {};
+    let context = AstTextSerializerContext {
+        serialized: "".to_string(),
+        indent: 0,
+    };
+    let result = driver
+        .visit(&ast, &visitor, context)
+        .expect("Could not serialize");
+    println!("{}", result.serialized);
     Ok(())
 }
 
