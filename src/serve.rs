@@ -1,4 +1,5 @@
-use std::{collections::HashMap, sync::Arc};
+use std::net::IpAddr;
+use std::sync::Arc;
 
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 
@@ -27,6 +28,168 @@ struct MelResponse {
     pub log: LogMsgs,
 }
 
+fn header_type_from_req(value: &HttpRequest) -> Struct {
+    // Make the header type.
+    let mut ht = Struct::new("h");
+    value.headers().iter().for_each(|header| {
+        ht.insert_field(
+            &header.0.to_string().replace("-", "_").to_lowercase(),
+            Type::String,
+        );
+    });
+    ht
+}
+
+fn uri_type() -> Struct {
+    // Make the URI type.
+    let mut urit = Struct::new("uri");
+    urit.insert_field("path", Type::String);
+    urit.insert_field("query", Type::String);
+
+    urit
+}
+
+fn req_type(header_type: Struct, uri_type: Struct) -> Struct {
+    // Make the req type.
+    let mut reqs = Struct::new("req");
+    reqs.insert_field("h", Type::Struct(header_type));
+    reqs.insert_field("uri", Type::Struct(uri_type));
+    reqs.insert_field("method", Type::String);
+    reqs.insert_field("scheme", Type::String);
+    reqs.insert_field("clientip", Type::IPAddress);
+    reqs.insert_field("clientport", Type::Integer);
+
+    reqs
+}
+
+fn type_scope_from_req(value: &HttpRequest) -> Scopes<Type> {
+    // Set up the built-in variables for type checking.
+    let mut scope = Scopes::<Type>::default();
+
+    let ht = header_type_from_req(value);
+    let urit = uri_type();
+    let reqs = req_type(ht, urit);
+
+    // Add those types to the scope.
+    scope = scope.insert("req", Type::Struct(reqs));
+
+    scope
+}
+
+fn value_scope_from_req(
+    value: &HttpRequest,
+    clientip: &IpAddr,
+    clientport: u16,
+) -> Scopes<TypedValue> {
+    let ht = header_type_from_req(value);
+    let urit = uri_type();
+    let reqt = req_type(ht.clone(), urit.clone());
+
+    // Set up the built-in variables for interpreting.
+    let mut value_scope = Scopes::<TypedValue>::default();
+
+    let mut reqv = StructValue::new(reqt.clone());
+
+    let mut hv = StructValue::new(ht.clone());
+
+    value.headers().iter().for_each(|header| {
+        if let Ok(x) = header.1.to_str() {
+            hv.insert_field(
+                &header.0.to_string().replace("-", "_").to_lowercase(),
+                TypedValue {
+                    value: Value::String(x.to_string()),
+                    tipe: Type::String,
+                },
+            )
+            .expect("header field value is mistyped");
+        }
+    });
+
+    let mut uriv = StructValue::new(urit.clone());
+
+    uriv.insert_field(
+        "path",
+        TypedValue {
+            value: Value::String(value.uri().path().to_string()),
+            tipe: Type::String,
+        },
+    )
+    .expect("path field value is mistyped.");
+
+    uriv.insert_field(
+        "query",
+        TypedValue {
+            value: Value::String(value.uri().query().unwrap_or_default().to_string()),
+            tipe: Type::String,
+        },
+    )
+    .expect("query field value is mistyped.");
+
+    reqv.insert_field(
+        "h",
+        TypedValue {
+            value: Value::Struct(hv),
+            tipe: Type::Struct(ht.clone()),
+        },
+    )
+    .expect("h field value is mistyped.");
+
+    reqv.insert_field(
+        "uri",
+        TypedValue {
+            value: Value::Struct(uriv),
+            tipe: Type::Struct(urit.clone()),
+        },
+    )
+    .expect("uri field value is mistyped.");
+
+    reqv.insert_field(
+        "method",
+        TypedValue {
+            value: Value::String(value.method().to_string()),
+            tipe: Type::String,
+        },
+    )
+    .expect("method field value is mistyped.");
+
+    reqv.insert_field(
+        "scheme",
+        TypedValue {
+            value: Value::String(value.uri().scheme().unwrap_or(&Scheme::HTTP).to_string()),
+            tipe: Type::String,
+        },
+    )
+    .expect("Header field value is mistyped.");
+
+    reqv.insert_field(
+        "clientip",
+        TypedValue {
+            value: Value::IPAddress(*clientip),
+            tipe: Type::IPAddress,
+        },
+    )
+    .expect("clientip field value is mistyped.");
+
+    reqv.insert_field(
+        "clientport",
+        TypedValue {
+            value: Value::Integer(clientport as i64),
+            tipe: Type::Integer,
+        },
+    )
+    .expect("clientport field value is mistyped.");
+
+    value_scope = value_scope.insert(
+        "req",
+        TypedValue {
+            value: Value::Struct(reqv),
+            tipe: Type::Struct(reqt),
+        },
+    );
+
+    value_scope
+}
+
 #[post("/{tail:.*}")] // <- define path parameters
 async fn index(
     req: HttpRequest,
@@ -42,157 +205,10 @@ async fn index(
     let clientport = peer.0.port();
 
     // Set up the built-in variables for type checking.
-    let mut analysis_scopes = Scopes::<Type>::default();
-
-    let mut ht = Struct {
-        name: "h".to_string(),
-        fields: HashMap::new(),
-    };
-
-    req.headers().iter().for_each(|header| {
-        ht.fields.insert(
-            header.0.to_string().replace("-", "_").to_lowercase(),
-            Type::String,
-        );
-    });
-
-    let mut urit = Struct {
-        name: "uri".to_string(),
-        fields: HashMap::new(),
-    };
-
-    urit.fields.insert("path".to_string(), Type::String);
-    urit.fields.insert("query".to_string(), Type::String);
-
-    let mut reqs = Struct {
-        name: "req".to_string(),
-        fields: HashMap::new(),
-    };
-    reqs.fields
-        .insert("h".to_string(), Type::Struct(ht.clone()));
-    reqs.fields
-        .insert("uri".to_string(), Type::Struct(urit.clone()));
-    reqs.fields.insert("method".to_string(), Type::String);
-    reqs.fields.insert("scheme".to_string(), Type::String);
-    reqs.fields.insert("clientip".to_string(), Type::IPAddress);
-    reqs.fields.insert("clientport".to_string(), Type::Integer);
-
-    analysis_scopes = analysis_scopes.insert("req", Type::Struct(reqs.clone()));
-
-    analysis_scopes = analysis_scopes.insert(
-        &path_element_builtin.name(),
-        Type::Function(
-            Arc::new(path_element_builtin.return_type()),
-            path_element_builtin.parameters(),
-        ),
-    );
-
-    analysis_scopes = analysis_scopes.insert(
-        &boolean_builtin.name(),
-        Type::Function(
-            Arc::new(boolean_builtin.return_type()),
-            boolean_builtin.parameters(),
-        ),
-    );
+    let analysis_scopes = type_scope_from_req(&req);
 
     // Set up the built-in variables for interpreting.
-    let mut interp_scopes = Scopes::<TypedValue>::default();
-
-    let mut reqsv = StructValue {
-        fields: HashMap::new(),
-        tpe: reqs.clone(),
-    };
-
-    let mut hv = StructValue {
-        fields: HashMap::new(),
-        tpe: ht.clone(),
-    };
-
-    req.headers().iter().for_each(|header| {
-        if let Ok(x) = header.1.to_str() {
-            hv.fields.insert(
-                header.0.to_string().replace("-", "_").to_lowercase(),
-                TypedValue {
-                    value: Value::String(x.to_string()),
-                    tipe: Type::String,
-                },
-            );
-        }
-    });
-
-    let mut uriv = StructValue {
-        fields: HashMap::new(),
-        tpe: urit.clone(),
-    };
-
-    uriv.fields.insert(
-        "path".to_string(),
-        TypedValue {
-            value: Value::String(req.uri().path().to_string()),
-            tipe: Type::String,
-        },
-    );
-    uriv.fields.insert(
-        "query".to_string(),
-        TypedValue {
-            value: Value::String(req.uri().query().unwrap_or_default().to_string()),
-            tipe: Type::String,
-        },
-    );
-
-    reqsv.fields.insert(
-        "h".to_string(),
-        TypedValue {
-            value: Value::Struct(hv),
-            tipe: Type::Struct(ht.clone()),
-        },
-    );
-    reqsv.fields.insert(
-        "uri".to_string(),
-        TypedValue {
-            value: Value::Struct(uriv),
-            tipe: Type::Struct(urit.clone()),
-        },
-    );
-    reqsv.fields.insert(
-        "method".to_string(),
-        TypedValue {
-            value: Value::String(req.method().to_string()),
-            tipe: Type::String,
-        },
-    );
-    reqsv.fields.insert(
-        "scheme".to_string(),
-        TypedValue {
-            value: Value::String(req.uri().scheme().unwrap_or(&Scheme::HTTP).to_string()),
-            tipe: Type::String,
-        },
-    );
-
-    reqsv.fields.insert(
-        "clientip".to_string(),
-        TypedValue {
-            value: Value::IPAddress(clientip),
-            tipe: Type::IPAddress,
-        },
-    );
-
-    reqsv.fields.insert(
-        "clientport".to_string(),
-        TypedValue {
-            value: Value::Integer(clientport as i64),
-            tipe: Type::Integer,
-        },
-    );
-
-    interp_scopes = interp_scopes.insert(
-        "req",
-        TypedValue {
-            value: Value::Struct(reqsv),
-            tipe: Type::Struct(reqs),
-        },
-    );
-
+    let mut interp_scopes = value_scope_from_req(&req, &clientip, clientport);
     interp_scopes = interp_scopes.insert(
         &path_element_builtin.name(),
         TypedValue {
