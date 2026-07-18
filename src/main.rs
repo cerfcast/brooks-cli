@@ -57,6 +57,14 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         port: u16,
     },
+    Proxy {
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "8080")]
+        port: u16,
+        #[arg(long)]
+        path: clio::ClioPath,
+    },
 }
 
 #[allow(clippy::result_large_err)]
@@ -134,6 +142,29 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
         }
     };
     Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn parse_and_analyze_processing_stages(
+    path: clio::ClioPath,
+) -> CliResult<TypedStage<PsVerificationKey>> {
+    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
+
+    let mut to_parse: Vec<u8> = vec![];
+    f.read_to_end(&mut to_parse)
+        .map_err(|_| CliError::BadPath)?;
+
+    let source = &String::from_utf8_lossy(&to_parse);
+
+    let result =
+        serde_json::from_str::<TypedGenericStage>(source).map_err(|e| ParseError(e.to_string()))?;
+
+    let types_scope = Scopes::<Type> {
+        scopes: vec![minimal_core_variable_types()],
+    };
+    let result = verify_ps_request_stage(&result, types_scope).map_err(VerificationError)?;
+
+    Ok(result)
 }
 
 #[allow(clippy::result_large_err)]
@@ -389,6 +420,14 @@ async fn main() {
         } => serve::serve(host, port)
             .await
             .map_err(CliError::ServerError),
+        Cli {
+            command: Commands::Proxy { host, port, path },
+        } => {
+            let crs = parse_and_analyze_processing_stages(path).expect("TODO");
+            proxy::proxy(host, port, crs)
+                .await
+                .map_err(CliError::ServerError)
+        }
     };
 
     if let Err(e) = result {
