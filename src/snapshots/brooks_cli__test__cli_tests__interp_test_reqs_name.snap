@@ -10,7 +10,7 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Type: req, Field Values: incoming: Type: headers, Field Values: method: GET
+Type: req, Field Values: h: Type: h, Field Values: None, method: "GET", scheme: "http", uri: Type: uri, Field Values: path: "/", query: ""
 Log:
 0 to 3: Evaluating identifier expression
 

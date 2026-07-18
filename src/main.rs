@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Read, sync::Arc};
+use std::io::Read;
 
 use ansi_term::{Color::Red, Style};
 #[allow(
@@ -13,6 +13,8 @@ mod test;
 
 use brooks_lib::logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs};
 
+use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
+use brooks_lib::mel::scope::{Scope, builtin_function_types, minimal_core_variable_types};
 use brooks_lib::mel::{
     analysis::{self, MelAnalysisError, MelAnalysisLocatableError},
     ast::AstVisitorDriver,
@@ -20,15 +22,19 @@ use brooks_lib::mel::{
     compiler::compile::CompilerError,
     interpreter::{
         self,
-        builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
-        interpret::{MelInterpContext, MelInterpLocatableError, StructValue, TypedValue, Value},
+        interpret::{MelInterpContext, MelInterpLocatableError, TypedValue},
     },
     scope::Scopes,
     serializer::{AstTextSerializer, AstTextSerializerContext},
-    tvs::{Struct, Type},
+    tvs::Type,
 };
+use brooks_lib::ps::spec::{TypedGenericStage, TypedStage};
+use brooks_lib::ps::verify::{PsVerificationError, PsVerificationKey, verify_ps_request_stage};
 use clap::{CommandFactory, Parser, Subcommand};
 
+use crate::CliError::{ParseError, VerificationError};
+
+mod proxy;
 mod serve;
 
 #[derive(Parser)]
@@ -76,7 +82,10 @@ fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
         .map_err(|_| CliError::BadPath)?;
 
     let source = &String::from_utf8_lossy(&to_parse);
-    let (analysis_scopes, _) = common_scopes();
+
+    let type_scopes = Scopes::<Type> {
+        scopes: vec![&minimal_core_variable_types() + &builtin_function_types()],
+    };
 
     let result = match compile(source) {
         Ok(expr) => expr,
@@ -86,7 +95,7 @@ fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
         }
     };
 
-    let result = analysis::analyze(&result, analysis_scopes);
+    let result = analysis::analyze(&result, &type_scopes);
 
     match result {
         Ok(r) => println!("Expression Type: {}", r.tipe().to_string()),
@@ -103,8 +112,16 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
     f.read_to_end(&mut to_parse)
         .map_err(|_| CliError::BadPath)?;
 
-    let (analysis_scopes, interp_scopes) = common_scopes();
+    let types_scopes = Scopes::<Type> {
+        scopes: vec![&minimal_core_variable_types() + &builtin_function_types()],
+    };
 
+    let values_scopes = Scopes::<TypedValue> {
+        scopes: vec![
+            &Into::<Scope<TypedValue>>::into(http::Request::new("body"))
+                + &builtin_builtin_function_interpreters(),
+        ],
+    };
     let source = &String::from_utf8_lossy(&to_parse);
 
     let result = match compile(source) {
@@ -115,13 +132,13 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
         }
     };
 
-    let analyzed = analysis::analyze(&result, analysis_scopes).map_err(CliError::AnalysisError)?;
+    let analyzed = analysis::analyze(&result, &types_scopes).map_err(CliError::AnalysisError)?;
 
     let mut interp_context = MelInterpContext::default();
 
     interp_context = interp_context
         .update_log(LogMsgs::new(Trace))
-        .update_scopes(interp_scopes);
+        .update_scopes(&values_scopes);
     match interpreter::interpret(&analyzed, interp_context) {
         Ok(o) => {
             match o.val {
@@ -191,105 +208,6 @@ fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
     Ok(())
 }
 
-fn common_scopes() -> (Scopes<Type>, Scopes<TypedValue>) {
-    // Set up the built-in variables for type checking.
-    let mut analysis_scopes = Scopes::<Type>::default();
-    let mut headers = Struct {
-        name: "headers".to_string(),
-        fields: HashMap::new(),
-    };
-
-    headers.fields.insert("method".to_string(), Type::String);
-
-    let mut reqs = Struct {
-        name: "req".to_string(),
-        fields: HashMap::new(),
-    };
-    reqs.fields
-        .insert("incoming".to_string(), Type::Struct(headers.clone()));
-
-    analysis_scopes = analysis_scopes.insert("req", Type::Struct(reqs.clone()));
-
-    let path_element_builtin = Path_ElementBuiltin {};
-    let boolean_builtin = BooleanBuiltin {};
-
-    analysis_scopes = analysis_scopes.insert(
-        &path_element_builtin.name(),
-        Type::Function(
-            Arc::new(path_element_builtin.return_type()),
-            path_element_builtin.parameters(),
-        ),
-    );
-
-    analysis_scopes = analysis_scopes.insert(
-        &boolean_builtin.name(),
-        Type::Function(
-            Arc::new(boolean_builtin.return_type()),
-            boolean_builtin.parameters(),
-        ),
-    );
-
-    // Set up the built-in variables for interpreting.
-    let mut interp_scopes = Scopes::<TypedValue>::default();
-
-    let mut reqsv = StructValue {
-        fields: HashMap::new(),
-        tpe: reqs.clone(),
-    };
-
-    let mut headersv = StructValue {
-        fields: HashMap::new(),
-        tpe: headers.clone(),
-    };
-
-    headersv.fields.insert(
-        "method".to_string(),
-        TypedValue {
-            value: Value::String("GET".to_string()),
-            tipe: Type::String,
-        },
-    );
-    reqsv.fields.insert(
-        "incoming".to_string(),
-        TypedValue {
-            value: Value::Struct(headersv),
-            tipe: Type::Struct(headers.clone()),
-        },
-    );
-
-    interp_scopes = interp_scopes.insert(
-        "req",
-        TypedValue {
-            value: Value::Struct(reqsv),
-            tipe: Type::Struct(reqs),
-        },
-    );
-
-    interp_scopes = interp_scopes.insert(
-        &path_element_builtin.name(),
-        TypedValue {
-            value: Value::Function(Arc::new(path_element_builtin.clone())),
-            tipe: Type::Function(
-                Arc::new(path_element_builtin.return_type()),
-                path_element_builtin.parameters(),
-            ),
-        },
-    );
-
-    interp_scopes = interp_scopes.insert(
-        &boolean_builtin.name(),
-        TypedValue {
-            value: Value::Function(Arc::new(boolean_builtin.clone())),
-            tipe: Type::Function(
-                Arc::new(boolean_builtin.return_type()),
-                boolean_builtin.parameters(),
-            ),
-        },
-    );
-
-    (analysis_scopes, interp_scopes)
-}
-
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum CliError {
@@ -297,6 +215,8 @@ pub enum CliError {
     CouldNotRead,
     AnalysisError(MelAnalysisLocatableError),
     InterpreterError(MelInterpLocatableError),
+    VerificationError(PsVerificationError),
+    ParseError(String),
     ServerError(std::io::Error),
 }
 pub type CliResult<T> = Result<T, CliError>;

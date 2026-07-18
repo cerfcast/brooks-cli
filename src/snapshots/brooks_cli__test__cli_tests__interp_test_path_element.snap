@@ -10,7 +10,7 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-to
+"to"
 Log:
 0 to 36: Evaluating function call expression
 0 to 12: Evaluating identifier expression

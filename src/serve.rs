@@ -239,13 +239,13 @@ async fn index(
         }
     };
 
-    let result = analysis::analyze(&result, analysis_scopes)
+    let result = analysis::analyze(&result, &analysis_scopes)
         .map_err(|e| actix_web::error::ErrorBadRequest(std::io::Error::other(e.to_string())))?;
 
     let mut interp_context = MelInterpContext::default();
     interp_context = interp_context
         .update_log(LogMsgs::new(Trace))
-        .update_scopes(interp_scopes);
+        .update_scopes(&interp_scopes);
 
     match interpreter::interpret(&result, interp_context) {
         Ok(o) => match o.val {

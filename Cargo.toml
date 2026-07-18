@@ -5,11 +5,14 @@ edition = "2024"
 
 [dependencies]
 actix-cors = "0.7.1"
+actix-utils = "3.0.1"
 actix-web = "4.14.0"
 ansi_term = "0.12.1"
 brooks-lib = { path = "lib" }
 clap = { version = "4.6.1", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
+futures-util = "0.3.32"
+http = "1.4.2"
 insta = "1.48.0"
 insta-cmd = "0.6.0"
 serde = "1.0.228"
