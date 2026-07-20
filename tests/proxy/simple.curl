@@ -1,0 +1,1 @@
+curl http://localhost:8080/proxy/?http://www.example.com -H "delete-me: DELETE" -v -H "date: THIS IS A DATE"
