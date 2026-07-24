@@ -25,8 +25,9 @@ use actix_web::http::header::{HeaderName, HeaderValue};
 use actix_web::http::uri::{Authority, PathAndQuery};
 use actix_web::{HttpRequest, dev::PeerAddr};
 
+use awc::http::StatusCode;
 use brooks_lib::ps::interpret::{
-    ProcessableRequestResponse, ProcessableRequestResponseError, interpret_stage,
+    ProcessableRequestResponse, ProcessableRequestResponseError, PsInterpretValue, interpret_stage,
 };
 use brooks_lib::ps::spec::TypedStage;
 use brooks_lib::ps::verify::PsVerificationKey;
@@ -98,14 +99,30 @@ where
                 let mut res = fut.await?;
 
                 let mut ars = ActixServiceResponse(&mut res);
-                let _ = interpret_stage(
+                match interpret_stage(
                     &crs,
                     &mut ars,
                     brooks_lib::ps::interpret::PsInterpretMode::Response,
-                );
-
-                println!("I am able to handle the response now!");
-                Ok(res)
+                ) {
+                    Ok(PsInterpretValue::SyntheticResponse(s)) => {
+                        println!("response: {s:?}");
+                        res.headers_mut().clear();
+                        for header in s.headers() {
+                            res.headers_mut().insert(
+                                HeaderName::from_str(header.0.as_str()).expect("TODO"),
+                                HeaderValue::from_bytes(header.1.as_bytes()).expect("TODO"),
+                            );
+                        }
+                        res.response_mut().head_mut().status =
+                            StatusCode::from_u16(s.status().as_u16()).expect("TODO");
+                        Ok(res.map_body(|_, _| s.body().clone()).map_into_boxed_body())
+                    }
+                    Ok(_) => {
+                        println!("I am able to handle the response now!");
+                        Ok(res)
+                    }
+                    Err(e) => Ok(res.error_response(ErrorInternalServerError(e.to_string()))),
+                }
             })
         }
     }

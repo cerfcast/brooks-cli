@@ -1,0 +1,51 @@
+{
+    "generic-metadata-type": "MI.ClientRequestStage",
+    "generic-metadata-value": {
+        "match-groups": [
+            {
+                "generic-metadata-type": "MI.MatchGroup",
+                "generic-metadata-value": {
+                    "if-rule": {
+                        "generic-metadata-type": "MI.StageRules",
+                        "generic-metadata-value": {
+                            "match": {
+                                "generic-metadata-type": "MI.ExpressionMatch",
+                                "generic-metadata-value": {
+                                    "expression": "true"
+                                }
+                            },
+                            "stage-metadata": {
+                                "generic-metadata-type": "MI.StageMetadata",
+                                "generic-metadata-value": {
+                                    "generic-metadata": [],
+                                    "response-transform": {
+                                        "generic-metadata-type": "MI.ResponseTransform",
+                                        "generic-metadata-value": {
+                                            "synthetic": {
+                                                "generic-metadata-type": "MI.SyntheticResponse",
+                                                "generic-metadata-value": {
+                                                    "headers": [
+                                                        {
+                                                            "generic-metadata-type": "MI.Header",
+                                                            "generic-metadata-value": {
+                                                                "name": "this-is-a-test",
+                                                                "value": "testing"
+                                                            }
+                                                        }
+                                                    ],
+                                                    "response-status": "400 + 4",
+                                                    "status-is-expression": true,
+                                                    "body": "this is a body."
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}
