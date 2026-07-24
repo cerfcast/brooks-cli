@@ -1,0 +1,30 @@
+---
+source: src/test.rs
+info:
+  program: brooks-cli
+  args:
+    - proxy
+    - "--port"
+    - "8080"
+    - "--path"
+    - "./not-found/"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Error: Bad path: "./not-found/"
+Usage: brooks-cli <COMMAND>
+
+Commands:
+  compile    
+  analyze    
+  interpret  
+  serve      
+  proxy      
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+
+----- stderr -----

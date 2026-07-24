@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::fmt::Display;
 use std::io::Read;
 
 use ansi_term::{Color::Red, Style};
@@ -30,13 +31,13 @@ mod test;
 
 use brooks_lib::logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs};
 
+use brooks_lib::mel::compiler::compile::{MelCompilerError, MelCompilerLocatableError};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
 use brooks_lib::mel::scope::{Scope, builtin_function_types, minimal_core_variable_types};
 use brooks_lib::mel::{
     analysis::{self, MelAnalysisError, MelAnalysisLocatableError},
     ast::AstVisitorDriver,
     compiler::compile,
-    compiler::compile::CompilerError,
     interpreter::{
         self,
         interpret::{MelInterpContext, MelInterpLocatableError, TypedValue},
@@ -92,11 +93,14 @@ enum Commands {
 
 #[allow(clippy::result_large_err)]
 fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
-    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
+    let mut f = path
+        .clone()
+        .open()
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let mut to_parse: Vec<u8> = vec![];
     f.read_to_end(&mut to_parse)
-        .map_err(|_| CliError::BadPath)?;
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let source = &String::from_utf8_lossy(&to_parse);
 
@@ -115,7 +119,7 @@ fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
     let result = analysis::analyze(&result, &type_scopes);
 
     match result {
-        Ok(r) => println!("Expression Type: {}", r.tipe().to_string()),
+        Ok(r) => println!("Expression Type: {}", r.tipe()),
         Err(e) => println!("{}", format_error(e, source, &path.to_string())),
     };
     Ok(())
@@ -123,11 +127,14 @@ fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
 
 #[allow(clippy::result_large_err)]
 fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
-    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
+    let mut f = path
+        .clone()
+        .open()
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let mut to_parse: Vec<u8> = vec![];
     f.read_to_end(&mut to_parse)
-        .map_err(|_| CliError::BadPath)?;
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let types_scopes = Scopes::<Type> {
         scopes: vec![&minimal_core_variable_types() + &builtin_function_types()],
@@ -182,11 +189,14 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
 fn parse_and_analyze_processing_stages(
     path: clio::ClioPath,
 ) -> CliResult<TypedStage<PsVerificationKey>> {
-    let mut f = path.clone().open().map_err(|_| CliError::BadPath)?;
+    let mut f = path
+        .clone()
+        .open()
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let mut to_parse: Vec<u8> = vec![];
     f.read_to_end(&mut to_parse)
-        .map_err(|_| CliError::BadPath)?;
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let source = &String::from_utf8_lossy(&to_parse);
 
@@ -203,11 +213,14 @@ fn parse_and_analyze_processing_stages(
 
 #[allow(clippy::result_large_err)]
 fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
-    let mut f = path.open().map_err(|_| CliError::BadPath)?;
+    let mut f = path
+        .clone()
+        .open()
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let mut to_parse: Vec<u8> = vec![];
     f.read_to_end(&mut to_parse)
-        .map_err(|_| CliError::BadPath)?;
+        .map_err(|_| CliError::BadPath(path.clone()))?;
 
     let compile_result = compile(&String::from_utf8_lossy(&to_parse));
     let ast = compile_result.expect("Compilation error");
@@ -228,8 +241,7 @@ fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum CliError {
-    BadPath,
-    CouldNotRead,
+    BadPath(clio::ClioPath),
     AnalysisError(MelAnalysisLocatableError),
     InterpreterError(MelInterpLocatableError),
     VerificationError(PsVerificationError),
@@ -238,9 +250,32 @@ pub enum CliError {
 }
 pub type CliResult<T> = Result<T, CliError>;
 
-fn format_compiler_error(error: CompilerError, source: &str, path: &str) -> String {
+impl Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CliError::BadPath(path) => write!(f, "Bad path: {path}"),
+            CliError::AnalysisError(mel_analysis_locatable_error) => {
+                write!(f, "Analysis error: {mel_analysis_locatable_error}")
+            }
+            CliError::InterpreterError(mel_interp_locatable_error) => {
+                write!(f, "Interpreter error: {mel_interp_locatable_error}")
+            }
+            VerificationError(ps_verification_error) => write!(
+                f,
+                "Processing Stages verification error: {ps_verification_error}"
+            ),
+            ParseError(pe) => write!(f, "Parsing error: {pe}"),
+            CliError::ServerError(error) => write!(f, "Server error: {error}"),
+        }
+    }
+}
+
+fn format_compiler_error(error: MelCompilerLocatableError, source: &str, path: &str) -> String {
     match error {
-        CompilerError::SyntaxError(location, msg) => {
+        MelCompilerLocatableError {
+            error: MelCompilerError::SyntaxError(msg),
+            location: l,
+        } => {
             let mut result =
                 Style::new().underline().paint("Error:").to_string() + &format!(" {}:\n", msg);
 
@@ -252,12 +287,12 @@ fn format_compiler_error(error: CompilerError, source: &str, path: &str) -> Stri
                 source_len
             };
 
-            let error_start = location.start;
-            let error_end = error_start + location.extent;
+            let error_start = l.start;
+            let error_end = error_start + l.extent;
 
             let pre_error_start =
                 std::cmp::max(0, error_start as i64 - context_len as i64) as usize;
-            let pre_error_end = location.start;
+            let pre_error_end = l.start;
 
             let post_error_start = std::cmp::min(source_len, error_end);
             let post_error_end = std::cmp::min(source_len, error_end + context_len);
@@ -359,16 +394,16 @@ async fn main() {
             .map_err(CliError::ServerError),
         Cli {
             command: Commands::Proxy { host, port, path },
-        } => {
-            let crs = parse_and_analyze_processing_stages(path).expect("TODO");
-            proxy::proxy(host, port, crs)
+        } => match parse_and_analyze_processing_stages(path) {
+            Ok(crs) => proxy::proxy(host, port, crs)
                 .await
-                .map_err(CliError::ServerError)
-        }
+                .map_err(CliError::ServerError),
+            Err(e) => Err(e),
+        },
     };
 
     if let Err(e) = result {
-        println!("Error: {e:?}");
+        println!("Error: {e}");
         let mut cli = Cli::command();
         println!("{}", cli.render_help());
     }

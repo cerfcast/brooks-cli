@@ -26,6 +26,17 @@ mod cli_tests {
     }
 
     #[test]
+    fn bad_path_test() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "proxy",
+            "--port",
+            "8080",
+            "--path",
+            "./not-found/"
+        ]));
+    }
+
+    #[test]
     fn simple_test() {
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "compile",
