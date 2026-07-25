@@ -132,11 +132,11 @@ where
 struct ActixServiceResponse<'a>(&'a mut ServiceResponse);
 
 impl<'a> ProcessableRequestResponse for ActixServiceResponse<'a> {
-    fn header_value(&self) -> Option<&str> {
+    fn header_value(&self) -> Option<String> {
         None
     }
 
-    fn headers(&self) -> &[&str] {
+    fn headers(&self) -> Vec<String> {
         todo!()
     }
 
@@ -208,11 +208,11 @@ impl<'a> ProcessableRequestResponse for ActixServiceResponse<'a> {
 struct ActixServiceRequest<'a>(&'a mut ServiceRequest);
 
 impl<'a> ProcessableRequestResponse for ActixServiceRequest<'a> {
-    fn header_value(&self) -> Option<&str> {
+    fn header_value(&self) -> Option<String> {
         todo!()
     }
 
-    fn headers(&self) -> &[&str] {
+    fn headers(&self) -> Vec<String> {
         todo!()
     }
 
