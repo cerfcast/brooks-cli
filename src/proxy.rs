@@ -168,8 +168,7 @@ impl<'a> ProcessableRequestResponse for ActixServiceResponse<'a> {
         );
         Ok(())
     }
-    fn uri(&self) -> Uri {
-        println!("uri: {}", self.0.request().uri());
+    fn uri(&self) -> std::result::Result<http::Uri, ProcessableRequestResponseError> {
         http::Uri::builder()
             .scheme(self.0.request().uri().scheme_str().unwrap_or("https"))
             .path_and_query(
@@ -189,7 +188,7 @@ impl<'a> ProcessableRequestResponse for ActixServiceResponse<'a> {
                     .to_string(),
             )
             .build()
-            .expect("Could not recreate Uri")
+            .map_err(|_| ProcessableRequestResponseError::BadValue)
     }
 
     fn set_uri(&mut self, _uri: &Uri) -> Result<(), ProcessableRequestResponseError> {
@@ -245,7 +244,7 @@ impl<'a> ProcessableRequestResponse for ActixServiceRequest<'a> {
         Ok(())
     }
 
-    fn uri(&self) -> Uri {
+    fn uri(&self) -> std::result::Result<http::Uri, ProcessableRequestResponseError> {
         println!("uri: {}", self.0.uri());
         http::Uri::builder()
             .scheme(self.0.uri().scheme_str().unwrap_or("https"))
@@ -264,7 +263,7 @@ impl<'a> ProcessableRequestResponse for ActixServiceRequest<'a> {
                     .to_string(),
             )
             .build()
-            .expect("Could not recreate Uri")
+            .map_err(|_| ProcessableRequestResponseError::BadValue)
     }
 
     fn set_uri(&mut self, _uri: &Uri) -> Result<(), ProcessableRequestResponseError> {

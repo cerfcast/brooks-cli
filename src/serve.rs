@@ -21,12 +21,12 @@ use std::sync::Arc;
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 
 use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
+use brooks_lib::mel::tvs::{BooleanBuiltin, BuiltinFunctionType, Path_ElementBuiltin};
 use brooks_lib::mel::{
     analysis,
     compiler::compile,
     interpreter::{
         self,
-        builtins::{BooleanBuiltin, BuiltinFunction, Path_ElementBuiltin},
         interpret::{MelInterpContext, StructValue, TypedValue, Value},
     },
     scope::Scopes,

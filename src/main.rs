@@ -120,7 +120,7 @@ fn compile_and_analyze(path: clio::ClioPath) -> CliResult<()> {
 
     match result {
         Ok(r) => println!("Expression Type: {}", r.tipe()),
-        Err(e) => println!("{}", format_error(e, source, &path.to_string())),
+        Err(e) => println!("{}", format_error(*e, source, &path.to_string())),
     };
     Ok(())
 }
@@ -239,12 +239,11 @@ fn compile_and_serialize(path: clio::ClioPath) -> CliResult<()> {
 }
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum CliError {
     BadPath(clio::ClioPath),
-    AnalysisError(MelAnalysisLocatableError),
-    InterpreterError(MelInterpLocatableError),
-    VerificationError(PsVerificationError),
+    AnalysisError(Box<MelAnalysisLocatableError>),
+    InterpreterError(Box<MelInterpLocatableError>),
+    VerificationError(Box<PsVerificationError>),
     ParseError(String),
     ServerError(std::io::Error),
 }
@@ -368,7 +367,7 @@ fn format_analysis_error(error: MelAnalysisLocatableError, source: &str, path: &
 }
 
 fn format_error(error: MelAnalysisLocatableError, source: &str, path: &str) -> String {
-    if let MelAnalysisError::CompilerError(e) = error.error {
+    if let MelAnalysisError::CompilerError(e) = *error.error {
         format_compiler_error(e, source, path)
     } else {
         format_analysis_error(error, source, path)
