@@ -114,24 +114,24 @@ pub async fn server(ip: String, port: u16, path: ClioPath, timeout: Duration) ->
     let metadata: HashMap<String, (DateTime<Utc>, TypedHostMetadata<()>)> = HashMap::new();
     let metadata = Arc::new(Mutex::new(metadata));
 
-    let web_ = HmdsWebConfiguration {
+    let web_configuration = HmdsWebConfiguration {
         hmds: metadata.clone(),
         timeout,
     };
 
-    let domain_ = HmdsDomainConfiguration {
+    let domain_configuration = HmdsDomainConfiguration {
         hmds: metadata.clone(),
         server_path: path.clone(),
     };
 
-    let http_configuration = web::Data::new(web_.clone());
+    let http_configuration = web::Data::new(web_configuration.clone());
 
     let result = tokio::spawn(async move {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 Ok(())
             },
-            result = socket_proxy_server(domain_) => result,
+            result = socket_proxy_server(domain_configuration) => result,
             result = HttpServer::new(move || {
             App::new()
                 .app_data(http_configuration.clone())
