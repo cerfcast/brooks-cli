@@ -17,15 +17,19 @@
 
 use std::{
     collections::HashMap,
-    io,
+    fs, io,
     path::Path,
     sync::{Arc, Mutex},
 };
 
 use actix_web::{App, HttpServer, delete, get, put, web};
-use brooks_lib::{cdni::spec::TypedHostMetadata, integrations};
-use chrono::{DateTime, Utc, Duration};
+use brooks_lib::{
+    cdni::spec::TypedHostMetadata,
+    integrations::{self, hmds::ExpirableJsonValue},
+};
+use chrono::{DateTime, Duration, Utc};
 use clio::ClioPath;
+use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -34,38 +38,45 @@ use tokio::{
 pub type Hmds = (DateTime<Utc>, TypedHostMetadata<()>);
 
 #[derive(Debug, Clone)]
-pub struct HmdsConfiguration {
+pub struct HmdsWebConfiguration {
     hmds: Arc<Mutex<HashMap<String, Hmds>>>,
-    server_path: ClioPath,
     timeout: Duration,
 }
 
-#[delete("/update/{address}")]
+pub struct HmdsDomainConfiguration {
+    hmds: Arc<Mutex<HashMap<String, Hmds>>>,
+    server_path: ClioPath,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Query {
+    host: String,
+}
+
+#[delete("/update/")]
 async fn delete_hmd(
-    path: web::Path<String>,
-    data: web::Data<HmdsConfiguration>,
+    query: web::Query<Query>,
+    data: web::Data<HmdsWebConfiguration>,
 ) -> actix_web::Result<String> {
-    let address = path.into_inner();
+    let address = &query.host;
 
     let mut hmds = data
         .hmds
         .lock()
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    hmds.remove(&address);
+    hmds.remove(address);
 
-    println!("hmds: {:?}", hmds.keys());
-
-    Ok(format!("Going to remove address {address}"))
+    Ok("".to_string())
 }
 
-#[put("/update/{address}")]
+#[put("/update/")]
 async fn add_hmd(
+    query: web::Query<Query>,
     info: web::Json<TypedHostMetadata<()>>,
-    path: web::Path<String>,
-    data: web::Data<HmdsConfiguration>,
+    data: web::Data<HmdsWebConfiguration>,
 ) -> actix_web::Result<String> {
-    let address = path.into_inner();
+    let address = &query.host;
 
     let mut hmds = data
         .hmds
@@ -74,23 +85,29 @@ async fn add_hmd(
 
     let expiry = Utc::now() + data.timeout;
 
+    let response = serde_json::to_string(&ExpirableJsonValue {
+        expiry,
+        value: serde_json::to_value(&info.0).expect("Could not serialize an HMD entry"),
+    })?;
+
     hmds.insert(address.clone(), (expiry, info.0));
 
-    Ok(format!(
-        "Adding address {address} to expire after {}, at {expiry}.",
-        data.timeout
-    ))
+    Ok(response)
 }
 
 #[get("/status/")]
-async fn status(data: web::Data<HmdsConfiguration>) -> actix_web::Result<String> {
-    Ok(format!(
-        "Going to get the status: {:?}",
-        data.hmds
-            .lock()
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
-            .keys()
-    ))
+async fn status(data: web::Data<HmdsWebConfiguration>) -> actix_web::Result<String> {
+    let res: Vec<_> = data
+        .hmds
+        .lock()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+        .values()
+        .map(|(timeout, value)| ExpirableJsonValue {
+            expiry: *timeout,
+            value: serde_json::to_value(value).expect("Could not serialize a HMD entry"),
+        })
+        .collect();
+    Ok(serde_json::to_string(&res)?)
 }
 
 pub async fn server(ip: String, port: u16, path: ClioPath, timeout: Duration) -> io::Result<()> {
