@@ -21,6 +21,7 @@
                                     "request-transform": {
                                         "generic-metadata-type": "MI.RequestTransform",
                                         "generic-metadata-value": {
+                                            "uri": "http://www.cnn.com",
                                             "header-transform": {
                                                 "generic-metadata-type": "MI.HeaderTransform",
                                                 "generic-metadata-value": {

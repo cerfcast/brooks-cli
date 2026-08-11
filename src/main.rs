@@ -48,17 +48,61 @@ use brooks_lib::mel::{
 };
 use brooks_lib::ps::spec::{TypedGenericStage, TypedStage};
 use brooks_lib::ps::verify::{PsVerificationError, PsVerificationKey, verify_ps_request_stage};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 
 use crate::CliError::{ParseError, VerificationError};
 
+mod hmds;
 mod proxy;
 mod serve;
 
+#[derive(Debug, Clone)]
+enum DebugLevel {
+    Error,
+    Warn,
+    Log,
+    Debug,
+}
+
+impl From<u8> for DebugLevel {
+    fn from(value: u8) -> Self {
+        if value > 3 {
+            Self::Debug
+        } else if value > 2 {
+            Self::Log
+        } else if value > 1 {
+            Self::Warn
+        } else {
+            Self::Error
+        }
+    }
+}
+
 #[derive(Parser)]
 struct Cli {
+    #[arg(long, action=ArgAction::Count)]
+    debug: u8,
+
     #[command(subcommand)]
     command: Commands,
+}
+
+pub fn parse_timeout_duration(given_duration: &str) -> Result<chrono::Duration, clap::Error> {
+    if given_duration.ends_with("s") {
+        let time: i64 = given_duration[0..given_duration.len() - 1]
+            .parse()
+            .map_err(|_| clap::error::Error::new(clap::error::ErrorKind::ValueValidation))?;
+        Ok(chrono::Duration::seconds(time))
+    } else if given_duration.ends_with("ns") {
+        let time: i64 = given_duration[0..given_duration.len() - 2]
+            .parse()
+            .map_err(|_| clap::error::Error::new(clap::error::ErrorKind::ValueValidation))?;
+        Ok(chrono::Duration::nanoseconds(time))
+    } else {
+        Err(clap::error::Error::new(
+            clap::error::ErrorKind::ValueValidation,
+        ))
+    }
 }
 
 #[derive(Subcommand)]
@@ -88,6 +132,16 @@ enum Commands {
         port: u16,
         #[arg(long)]
         path: clio::ClioPath,
+    },
+    HmdsServer {
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "8080")]
+        port: u16,
+        #[arg(long, default_value = "/tmp/brooks/server")]
+        path: clio::ClioPath,
+        #[arg(long, default_value = "300", value_parser=clap::builder::ValueParser::new(parse_timeout_duration))]
+        timeout: chrono::Duration,
     },
 }
 
@@ -246,6 +300,7 @@ pub enum CliError {
     VerificationError(Box<PsVerificationError>),
     ParseError(String),
     ServerError(std::io::Error),
+    SocketError(std::io::Error),
 }
 pub type CliResult<T> = Result<T, CliError>;
 
@@ -265,6 +320,7 @@ impl Display for CliError {
             ),
             ParseError(pe) => write!(f, "Parsing error: {pe}"),
             CliError::ServerError(error) => write!(f, "Server error: {error}"),
+            CliError::SocketError(error) => write!(f, "UNIX Socket error: {error}"),
         }
     }
 }
@@ -376,28 +432,33 @@ fn format_error(error: MelAnalysisLocatableError, source: &str, path: &str) -> S
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let result = match Cli::parse() {
-        Cli {
-            command: Commands::Compile { path },
-        } => compile_and_serialize(path),
-        Cli {
-            command: Commands::Analyze { path },
-        } => compile_and_analyze(path),
-        Cli {
-            command: Commands::Interpret { path },
-        } => compile_and_interpret(path),
-        Cli {
-            command: Commands::Serve { host, port },
-        } => serve::serve(host, port)
+    let Cli {
+        debug: raw_debug,
+        command,
+    } = Cli::parse();
+    let (_debug, command) = (Into::<DebugLevel>::into(raw_debug), command);
+
+    let result = match command {
+        Commands::Compile { path } => compile_and_serialize(path),
+        Commands::Analyze { path } => compile_and_analyze(path),
+        Commands::Interpret { path } => compile_and_interpret(path),
+        Commands::Serve { host, port } => serve::serve(host, port)
             .await
             .map_err(CliError::ServerError),
-        Cli {
-            command: Commands::Proxy { host, port, path },
-        } => match parse_and_analyze_processing_stages(path) {
+        Commands::Proxy { host, port, path } => match parse_and_analyze_processing_stages(path) {
             Ok(crs) => proxy::proxy(host, port, crs)
                 .await
                 .map_err(CliError::ServerError),
             Err(e) => Err(e),
+        },
+        Commands::HmdsServer {
+            host,
+            port,
+            path,
+            timeout,
+        } => match hmds::server(host, port, path, timeout).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(CliError::SocketError(e)),
         },
     };
 
