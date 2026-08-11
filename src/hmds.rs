@@ -93,24 +93,29 @@ async fn status(data: web::Data<HmdsConfiguration>) -> actix_web::Result<String>
     ))
 }
 
-pub async fn server(
-    ip: String,
-    port: u16,
-    path: ClioPath,
-    timeout: Duration,
-) -> io::Result<()> {
+pub async fn server(ip: String, port: u16, path: ClioPath, timeout: Duration) -> io::Result<()> {
     let metadata: HashMap<String, (DateTime<Utc>, TypedHostMetadata<()>)> = HashMap::new();
     let metadata = Arc::new(Mutex::new(metadata));
-    let configuration = HmdsConfiguration {
+
+    let web_ = HmdsWebConfiguration {
         hmds: metadata.clone(),
-        server_path: path,
         timeout,
     };
 
-    let http_configuration = web::Data::new(configuration.clone());
+    let domain_ = HmdsDomainConfiguration {
+        hmds: metadata.clone(),
+        server_path: path.clone(),
+    };
 
-    let http_server = tokio::spawn(
-        HttpServer::new(move || {
+    let http_configuration = web::Data::new(web_.clone());
+
+    let result = tokio::spawn(async move {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                Ok(())
+            },
+            result = socket_proxy_server(domain_) => result,
+            result = HttpServer::new(move || {
             App::new()
                 .app_data(http_configuration.clone())
                 .wrap(actix_cors::Cors::permissive())
@@ -119,13 +124,16 @@ pub async fn server(
                 .service(status)
         })
         .bind((ip, port))?
-        .run(),
-    );
+        .run() => result,
+        }
+    })
+    .await;
 
-    let unix_server = tokio::spawn(socket_proxy_server(configuration.clone()));
+    // Instead of using a Drop implementation (because that does not let us show an error),
+    // delete the path to the domain socket here.
+    fs::remove_file(path.path())?;
 
-    _ = unix_server.await?;
-    http_server.await?
+    result?
 }
 
 async fn write_entire(s: &mut UnixStream, d: &[u8]) -> io::Result<usize> {
@@ -176,7 +184,7 @@ async fn read_entire(s: &mut UnixStream, d: &mut [u8]) -> io::Result<usize> {
     }
 }
 
-pub async fn socket_proxy_server(config: HmdsConfiguration) -> io::Result<()> {
+pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<()> {
     let server_path = &config.server_path;
     let socket = UnixListener::bind(server_path.path())?;
 
