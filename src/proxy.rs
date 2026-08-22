@@ -201,6 +201,10 @@ impl<'a> ProcessableRequestResponse for ActixServiceResponse<'a> {
         self.0.response_mut().head_mut().status = sc;
         Ok(())
     }
+    
+    fn clear_headers(&mut self) -> brooks_lib::ps::interpret::ProcessableRequestResponseResult<()> {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
@@ -274,6 +278,10 @@ impl<'a> ProcessableRequestResponse for ActixServiceRequest<'a> {
 
     fn set_response(&mut self, _response: &u16) -> Result<(), ProcessableRequestResponseError> {
         Err(ProcessableRequestResponseError::InvalidMode)
+    }
+    
+    fn clear_headers(&mut self) -> brooks_lib::ps::interpret::ProcessableRequestResponseResult<()> {
+        todo!()
     }
 }
 
