@@ -87,6 +87,7 @@ async fn add_hmd(
 
     let response = serde_json::to_string(&ExpirableJsonValue {
         expiry,
+        host: address.to_string(),
         value: serde_json::to_value(&info.0).expect("Could not serialize an HMD entry"),
     })?;
 
@@ -101,9 +102,10 @@ async fn status(data: web::Data<HmdsWebConfiguration>) -> actix_web::Result<Stri
         .hmds
         .lock()
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
-        .values()
-        .map(|(timeout, value)| ExpirableJsonValue {
+        .iter()
+        .map(|(host, (timeout, value))| ExpirableJsonValue {
             expiry: *timeout,
+            host: host.to_string(),
             value: serde_json::to_value(value).expect("Could not serialize a HMD entry"),
         })
         .collect();
@@ -226,15 +228,17 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
 
         let found = {
             let hmds = config.hmds.lock().unwrap();
-            hmds.get(&query).cloned()
+            hmds.get_key_value(&query)
+                .map(|(key, (ts, f))| (key.clone(), (*ts, f.clone())))
         };
 
         match found {
-            Some((timestamp, found)) => {
+            Some((key, (timestamp, found))) => {
                 write_entire(
                     &mut client,
                     serde_json::to_string(&integrations::hmds::ExpirableJsonValue {
                         expiry: timestamp,
+                        host: key,
                         value: serde_json::to_value(found)?,
                     })
                     .expect("Could not serialize")
