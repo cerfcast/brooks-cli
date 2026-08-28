@@ -104,7 +104,7 @@ where
                     &mut ars,
                     brooks_lib::ps::interpret::PsInterpretMode::Response,
                 ) {
-                    Ok(PsInterpretValue::SyntheticResponse(s)) => {
+                    Ok((PsInterpretValue::SyntheticResponse(s), _)) => {
                         println!("response: {s:?}");
                         res.headers_mut().clear();
                         for header in s.headers() {
