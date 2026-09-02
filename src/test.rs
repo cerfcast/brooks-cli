@@ -141,4 +141,18 @@ mod cli_tests {
             "tests/analysis_error4.mel"
         ]));
     }
+
+    #[cfg(not(feature = "domain"))]
+    #[test]
+    fn no_domain_feature_test() {
+        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
+            "hmds-server",
+            "--port",
+            "8081",
+            "--timeout",
+            "25s",
+            "--user",
+            "testing_user",
+        ]));
+    }
 }

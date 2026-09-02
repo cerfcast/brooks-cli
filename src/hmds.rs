@@ -18,7 +18,6 @@
 use std::{
     collections::HashMap,
     fs, io,
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -30,10 +29,16 @@ use brooks_lib::{
 use chrono::{DateTime, Duration, Utc};
 use clio::ClioPath;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[cfg(feature = "domain")]
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
 };
+
+#[cfg(feature = "domain")]
+use std::path::Path;
 
 pub type Hmds = (DateTime<Utc>, TypedHostMetadata<()>);
 
@@ -43,12 +48,15 @@ pub struct HmdsWebConfiguration {
     timeout: Duration,
 }
 
+#[cfg(feature = "domain")]
 pub struct HmdsDomainConfiguration {
     hmds: Arc<Mutex<HashMap<String, Hmds>>>,
     server_path: ClioPath,
     user: Option<String>,
     group: Option<String>,
 }
+#[cfg(not(feature = "domain"))]
+pub struct HmdsDomainConfiguration {}
 
 #[derive(Serialize, Deserialize)]
 struct Query {
@@ -130,12 +138,15 @@ pub async fn server(
         timeout,
     };
 
+    #[cfg(feature = "domain")]
     let domain_configuration = HmdsDomainConfiguration {
         hmds: metadata.clone(),
         server_path: path.clone(),
         user: user.clone(),
         group: group.clone(),
     };
+    #[cfg(not(feature = "domain"))]
+    let domain_configuration = HmdsDomainConfiguration {};
 
     let http_configuration = web::Data::new(web_configuration.clone());
 
@@ -166,6 +177,7 @@ pub async fn server(
     result?
 }
 
+#[cfg(feature = "domain")]
 async fn write_entire(s: &mut UnixStream, d: &[u8]) -> io::Result<usize> {
     s.write_u64_le(d.len() as u64).await?;
 
@@ -191,6 +203,7 @@ async fn write_entire(s: &mut UnixStream, d: &[u8]) -> io::Result<usize> {
     }
 }
 
+#[cfg(feature = "domain")]
 async fn read_entire(s: &mut UnixStream, d: &mut [u8]) -> io::Result<usize> {
     let mut already_read = 0usize;
     loop {
@@ -214,11 +227,12 @@ async fn read_entire(s: &mut UnixStream, d: &mut [u8]) -> io::Result<usize> {
     }
 }
 
+#[cfg(feature = "domain")]
 pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<()> {
     let server_path = &config.server_path;
     let socket = UnixListener::bind(server_path.path())?;
 
-    #[cfg(target_family = "unix")]
+    #[cfg(feature = "domain")]
     {
         // Now that we have bound, let's try to change the permissions on that file.
         let user = if let Some(user) = config.user {
@@ -242,7 +256,8 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
         };
         std::os::unix::fs::chown(server_path.path(), user, group)?;
     }
-    #[cfg(not(target_family = "unix"))]
+
+    #[cfg(not(feature = "domain"))]
     {
         if config.user.is_some() || config.group.is_some() {
             eprintln!(
@@ -297,6 +312,14 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
     }
 }
 
+#[cfg(not(feature = "domain"))]
+pub async fn socket_proxy_server(_: HmdsDomainConfiguration) -> io::Result<()> {
+    Err(io::Error::other(
+        "UNIX domain socket access to the proxy server is not supported in non-UNIX platforms.",
+    ))
+}
+
+#[cfg(feature = "domain")]
 #[allow(unused)]
 pub async fn query_proxy_config(query: &str, server_path: &Path) -> io::Result<String> {
     let mut socket = UnixStream::connect(server_path).await?;

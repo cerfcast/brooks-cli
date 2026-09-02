@@ -143,10 +143,10 @@ enum Commands {
         #[arg(long, default_value = "300", value_parser=clap::builder::ValueParser::new(parse_timeout_duration))]
         timeout: chrono::Duration,
 
-        #[cfg(target_family = "unix")]
+        #[cfg(feature = "domain")]
         #[arg(long)]
         user: Option<String>,
-        #[cfg(target_family = "unix")]
+        #[cfg(feature = "domain")]
         #[arg(long)]
         group: Option<String>,
     },
@@ -459,7 +459,7 @@ async fn main() {
             Err(e) => Err(e),
         },
 
-        #[cfg(target_family = "unix")]
+        #[cfg(feature = "domain")]
         Commands::HmdsServer {
             host,
             port,
@@ -471,7 +471,7 @@ async fn main() {
             Ok(_) => Ok(()),
             Err(e) => Err(CliError::SocketError(e)),
         },
-        #[cfg(not(target_family = "unix"))]
+        #[cfg(not(feature = "domain"))]
         Commands::HmdsServer {
             host,
             port,
