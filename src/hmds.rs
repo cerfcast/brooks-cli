@@ -46,6 +46,8 @@ pub struct HmdsWebConfiguration {
 pub struct HmdsDomainConfiguration {
     hmds: Arc<Mutex<HashMap<String, Hmds>>>,
     server_path: ClioPath,
+    user: Option<String>,
+    group: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -112,7 +114,14 @@ async fn status(data: web::Data<HmdsWebConfiguration>) -> actix_web::Result<Stri
     Ok(serde_json::to_string(&res)?)
 }
 
-pub async fn server(ip: String, port: u16, path: ClioPath, timeout: Duration) -> io::Result<()> {
+pub async fn server(
+    ip: String,
+    port: u16,
+    path: ClioPath,
+    timeout: Duration,
+    user: Option<String>,
+    group: Option<String>,
+) -> io::Result<()> {
     let metadata: HashMap<String, (DateTime<Utc>, TypedHostMetadata<()>)> = HashMap::new();
     let metadata = Arc::new(Mutex::new(metadata));
 
@@ -124,6 +133,8 @@ pub async fn server(ip: String, port: u16, path: ClioPath, timeout: Duration) ->
     let domain_configuration = HmdsDomainConfiguration {
         hmds: metadata.clone(),
         server_path: path.clone(),
+        user: user.clone(),
+        group: group.clone(),
     };
 
     let http_configuration = web::Data::new(web_configuration.clone());
@@ -206,6 +217,39 @@ async fn read_entire(s: &mut UnixStream, d: &mut [u8]) -> io::Result<usize> {
 pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<()> {
     let server_path = &config.server_path;
     let socket = UnixListener::bind(server_path.path())?;
+
+    #[cfg(not(target_family = "unix"))]
+    {
+        // Now that we have bound, let's try to change the permissions on that file.
+        let user = if let Some(user) = config.user {
+            let user = pwd_grp::getpwnam(&user)?.ok_or(io::Error::other(format!(
+                "Cannot find information about user {}",
+                user
+            )))?;
+            Some(user.uid)
+        } else {
+            None
+        };
+
+        let group = if let Some(group) = config.group {
+            let group = pwd_grp::getgrnam(&group)?.ok_or(io::Error::other(format!(
+                "Cannot find information about group {}",
+                group
+            )))?;
+            Some(group.gid)
+        } else {
+            None
+        };
+        std::os::unix::fs::chown(server_path.path(), user, group)?;
+    }
+    #[cfg(target_family = "unix")]
+    {
+        if config.user.is_some() || config.group.is_some() {
+            eprintln!(
+                "Configuring a user/group for the domain socket on a non-UNIX platform is a no-op."
+            )
+        }
+    }
 
     loop {
         // Wait for the socket to be readable

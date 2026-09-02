@@ -142,6 +142,13 @@ enum Commands {
         path: clio::ClioPath,
         #[arg(long, default_value = "300", value_parser=clap::builder::ValueParser::new(parse_timeout_duration))]
         timeout: chrono::Duration,
+
+        #[cfg(target_family = "unix")]
+        #[arg(long)]
+        user: Option<String>,
+        #[cfg(target_family = "unix")]
+        #[arg(long)]
+        group: Option<String>,
     },
 }
 
@@ -451,12 +458,26 @@ async fn main() {
                 .map_err(CliError::ServerError),
             Err(e) => Err(e),
         },
+
+        #[cfg(target_family = "unix")]
         Commands::HmdsServer {
             host,
             port,
             path,
             timeout,
-        } => match hmds::server(host, port, path, timeout).await {
+            user,
+            group,
+        } => match hmds::server(host, port, path, timeout, user, group).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(CliError::SocketError(e)),
+        },
+        #[cfg(not(target_family = "unix"))]
+        Commands::HmdsServer {
+            host,
+            port,
+            path,
+            timeout,
+        } => match hmds::server(host, port, path, timeout, None, None).await {
             Ok(_) => Ok(()),
             Err(e) => Err(CliError::SocketError(e)),
         },

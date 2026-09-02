@@ -12,6 +12,15 @@ jobs:
           submodules: true
       - run: cargo build
       - run: cargo test
+  cli-tests-windows:
+    name: Library Tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - run: cargo build
+      - run: cargo test
   cli-format-tests:
     name: Library Format Tests
     runs-on: ubuntu-latest
