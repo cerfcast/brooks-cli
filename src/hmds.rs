@@ -218,7 +218,7 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
     let server_path = &config.server_path;
     let socket = UnixListener::bind(server_path.path())?;
 
-    #[cfg(not(target_family = "unix"))]
+    #[cfg(target_family = "unix")]
     {
         // Now that we have bound, let's try to change the permissions on that file.
         let user = if let Some(user) = config.user {
@@ -242,7 +242,7 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
         };
         std::os::unix::fs::chown(server_path.path(), user, group)?;
     }
-    #[cfg(target_family = "unix")]
+    #[cfg(not(target_family = "unix"))]
     {
         if config.user.is_some() || config.group.is_some() {
             eprintln!(
