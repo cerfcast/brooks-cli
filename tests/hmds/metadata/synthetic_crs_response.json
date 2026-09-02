@@ -35,7 +35,7 @@
                                                         "synthetic": {
                                                             "generic-metadata-type": "MI.SyntheticResponse",
                                                             "generic-metadata-value": {
-                                                                "body": "\"testing\" . \"one\"",
+                                                                "body": "\"using builtin mel string functions: \" . upper(\"one\")",
                                                                 "body-is-expression": true
                                                             }
                                                         }
