@@ -15,7 +15,7 @@ clap = { version = "4.6.1", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 futures-util = "0.3.32"
 http = "1.4.2"
-insta = "1.48.0"
+insta = { version = "1.48.0", features = ["filters"] }
 insta-cmd = "0.6.0"
 pwd-grp = "1.0.2"
 serde = "1.0.228"

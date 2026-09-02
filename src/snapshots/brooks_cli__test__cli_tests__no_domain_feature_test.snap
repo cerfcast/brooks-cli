@@ -18,6 +18,6 @@ exit_code: 2
 ----- stderr -----
 error: unexpected argument '--user' found
 
-Usage: brooks-cli hmds-server --port <PORT> --timeout <TIMEOUT>
+Usage: [BROOKS_CLI] hmds-server --port <PORT> --timeout <TIMEOUT>
 
 For more information, try '--help'.

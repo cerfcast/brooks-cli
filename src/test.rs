@@ -15,6 +15,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+macro_rules! apply_binary_name_filters {
+    {} => {
+        let mut settings = insta::Settings::clone_current();
+        // CLI Binary Name
+        settings.add_filter(r"brooks-cli(\.exe)?", "[BROOKS_CLI]");
+        let _bound = settings.bind_to_scope();
+    }
+}
+
 #[cfg(test)]
 mod cli_tests {
     use insta_cmd::{assert_cmd_snapshot, get_cargo_bin};
@@ -22,11 +31,13 @@ mod cli_tests {
 
     #[test]
     fn help_test() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).arg("--help"));
     }
 
     #[test]
     fn bad_path_test() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "proxy",
             "--port",
@@ -38,6 +49,7 @@ mod cli_tests {
 
     #[test]
     fn simple_test() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "compile",
             "--path",
@@ -47,6 +59,7 @@ mod cli_tests {
 
     #[test]
     fn binary_test() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "compile",
             "--path",
@@ -56,6 +69,7 @@ mod cli_tests {
 
     #[test]
     fn interp_test_path_element() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "interpret",
             "--path",
@@ -65,6 +79,7 @@ mod cli_tests {
 
     #[test]
     fn interp_test_path_element_name() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "interpret",
             "--path",
@@ -74,6 +89,7 @@ mod cli_tests {
 
     #[test]
     fn interp_test_reqs_name() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "interpret",
             "--path",
@@ -83,6 +99,7 @@ mod cli_tests {
 
     #[test]
     fn interp_test_reqs() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "interpret",
             "--path",
@@ -92,6 +109,7 @@ mod cli_tests {
 
     #[test]
     fn interp_test_boolean_builtin() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "interpret",
             "--path",
@@ -101,6 +119,7 @@ mod cli_tests {
 
     #[test]
     fn compile_test_errors() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "analyze",
             "--path",
@@ -120,6 +139,7 @@ mod cli_tests {
 
     #[test]
     fn analyze_test_errors() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "analyze",
             "--path",
@@ -145,6 +165,7 @@ mod cli_tests {
     #[cfg(not(feature = "domain"))]
     #[test]
     fn no_domain_feature_test() {
+        apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
             "hmds-server",
             "--port",

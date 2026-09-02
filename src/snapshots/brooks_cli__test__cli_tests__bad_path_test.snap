@@ -13,7 +13,7 @@ success: true
 exit_code: 0
 ----- stdout -----
 Error: Bad path: "./not-found/"
-Usage: brooks-cli [OPTIONS] <COMMAND>
+Usage: [BROOKS_CLI] [OPTIONS] <COMMAND>
 
 Commands:
   compile      

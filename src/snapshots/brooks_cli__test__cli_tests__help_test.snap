@@ -8,7 +8,7 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Usage: brooks-cli [OPTIONS] <COMMAND>
+Usage: [BROOKS_CLI] [OPTIONS] <COMMAND>
 
 Commands:
   compile      
