@@ -1,0 +1,3 @@
+curl -s -X PUT "http://127.0.0.1:8081/update/?host=www.gmail.com" --json @tests/hmds/metadata/all.json -o /dev/null
+curl -s "http://127.0.0.1:8081/qry/?host=www.notgmail.com" | jq .
+

@@ -122,6 +122,32 @@ async fn status(data: web::Data<HmdsWebConfiguration>) -> actix_web::Result<Stri
     Ok(serde_json::to_string(&res)?)
 }
 
+#[get("/qry/")]
+async fn qry(
+    query: web::Query<Query>,
+    data: web::Data<HmdsWebConfiguration>,
+) -> actix_web::Result<String> {
+    let query = &query.host;
+
+    let found = {
+        let hmds = data.hmds.lock().unwrap();
+        hmds.get_key_value(query)
+            .map(|(key, (ts, f))| (key.clone(), (*ts, f.clone())))
+    };
+
+    match found {
+        Some((key, (timestamp, found))) => Ok(serde_json::to_string(
+            &integrations::hmds::ExpirableJsonValue {
+                expiry: timestamp,
+                host: key,
+                value: serde_json::to_value(found)?,
+            },
+        )?),
+        None => Ok(serde_json::to_string(&Value::Null)?),
+    }
+}
+
+#[allow(unused)]
 pub async fn server(
     ip: String,
     port: u16,
@@ -163,6 +189,7 @@ pub async fn server(
                 .service(delete_hmd)
                 .service(add_hmd)
                 .service(status)
+                .service(qry)
         })
         .bind((ip, port))?
         .run() => result,
