@@ -34,6 +34,7 @@ use brooks_lib::ps::spec::TypedStage;
 use brooks_lib::ps::verify::PsVerificationKey;
 use futures_util::FutureExt;
 use http::Uri;
+use log::info;
 
 use std::future::{Ready, ready};
 
@@ -92,7 +93,7 @@ where
             return ok(req.error_response(ErrorInternalServerError(e.to_string()))).boxed_local();
         }
 
-        println!("req: {:?}", req);
+        info!("Attempting to use PS for req: {:?}", req);
         let fut = self.service.call(req);
 
         {
@@ -108,7 +109,7 @@ where
                     brooks_lib::ps::interpret::PsInterpretMode::Response,
                 ) {
                     Ok((PsInterpretValue::SyntheticResponse(s), _)) => {
-                        println!("response: {s:?}");
+                        info!("After processing using PS, there is a response: {s:?}");
                         res.headers_mut().clear();
                         for header in s.headers() {
                             res.headers_mut().insert(
@@ -120,10 +121,7 @@ where
                             StatusCode::from_u16(s.status().as_u16()).expect("TODO");
                         Ok(res.map_body(|_, _| s.body().clone()).map_into_boxed_body())
                     }
-                    Ok(_) => {
-                        println!("I am able to handle the response now!");
-                        Ok(res)
-                    }
+                    Ok(_) => Ok(res),
                     Err(e) => Ok(res.error_response(ErrorInternalServerError(e.to_string()))),
                 }
             })
@@ -252,7 +250,10 @@ impl<'a> ProcessableRequestResponse for ActixServiceRequest<'a> {
     }
 
     fn uri(&self) -> std::result::Result<http::Uri, ProcessableRequestResponseError> {
-        println!("uri: {}", self.0.uri());
+        info!(
+            "Retrieving URI from ProcessableRequestResponse: {}",
+            self.0.uri()
+        );
         http::Uri::builder()
             .scheme(self.0.uri().scheme_str().unwrap_or("https"))
             .path_and_query(
@@ -295,7 +296,7 @@ fn client_added_header(hn: &str) -> bool {
 #[get("/proxy/")]
 async fn index(req: HttpRequest, _peer: PeerAddr) -> actix_web::Result<String> {
     let query_proxy_url = req.query_string();
-    println!("proxy_url: {query_proxy_url}");
+    info!("Proxying a request for {query_proxy_url}");
     let proxied_url = if !query_proxy_url.is_empty() {
         &actix_web::http::Uri::from_str(req.query_string()).map_err(ErrorBadGateway)?
     } else {
@@ -324,7 +325,7 @@ pub async fn proxy(
 ) -> std::io::Result<()> {
     use actix_web::{App, HttpServer};
 
-    println!("Proxying on {}:{}", ip, port);
+    info!("Proxying on {}:{}", ip, port);
     HttpServer::new(move || {
         App::new()
             .wrap(ProcessingStagesMiddleware { crs: crs.clone() })

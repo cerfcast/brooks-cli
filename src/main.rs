@@ -49,6 +49,9 @@ use brooks_lib::mel::{
 use brooks_lib::ps::spec::{TypedGenericStage, TypedStage};
 use brooks_lib::ps::verify::{PsVerificationError, PsVerificationKey, verify_ps_request_stage};
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
+use clio::ClioPath;
+use flexi_logger::{FileSpec, LogSpecification, Logger};
+use log::{LevelFilter, info};
 
 use crate::CliError::{ParseError, VerificationError};
 
@@ -60,20 +63,31 @@ mod serve;
 enum DebugLevel {
     Error,
     Warn,
-    Log,
+    Info,
     Debug,
 }
 
 impl From<u8> for DebugLevel {
     fn from(value: u8) -> Self {
-        if value > 3 {
+        if value >= 3 {
             Self::Debug
-        } else if value > 2 {
-            Self::Log
-        } else if value > 1 {
+        } else if value >= 2 {
+            Self::Info
+        } else if value >= 1 {
             Self::Warn
         } else {
             Self::Error
+        }
+    }
+}
+
+impl From<DebugLevel> for LevelFilter {
+    fn from(value: DebugLevel) -> Self {
+        match value {
+            DebugLevel::Error => LevelFilter::Error,
+            DebugLevel::Warn => LevelFilter::Warn,
+            DebugLevel::Info => LevelFilter::Info,
+            DebugLevel::Debug => LevelFilter::Debug,
         }
     }
 }
@@ -82,6 +96,9 @@ impl From<u8> for DebugLevel {
 struct Cli {
     #[arg(long, action=ArgAction::Count)]
     debug: u8,
+
+    #[arg(long)]
+    log_file: Option<ClioPath>,
 
     #[command(subcommand)]
     command: Commands,
@@ -105,7 +122,7 @@ pub fn parse_timeout_duration(given_duration: &str) -> Result<chrono::Duration, 
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     Compile {
         #[arg(long)]
@@ -441,9 +458,34 @@ fn format_error(error: MelAnalysisLocatableError, source: &str, path: &str) -> S
 async fn main() {
     let Cli {
         debug: raw_debug,
+        log_file: maybe_log_file,
         command,
     } = Cli::parse();
-    let (_debug, command) = (Into::<DebugLevel>::into(raw_debug), command);
+
+    let (debug, command) = (Into::<DebugLevel>::into(raw_debug), command);
+
+    // First, setup logging.
+    let mut log_builder = LogSpecification::builder();
+    log_builder.default(From::<DebugLevel>::from(debug));
+    let mut logger = Logger::with(log_builder.build());
+    logger = if let Some(log_file) = maybe_log_file {
+        logger.log_to_file(FileSpec::default().directory(log_file.path()))
+    } else {
+        logger
+    };
+
+    let logger = logger
+        .start()
+        .unwrap_or_else(|e| panic!("Logger initialization failed with {}", e));
+
+    info!(
+        "Logging at {:?} level",
+        logger
+            .current_max_level()
+            .unwrap_or_else(|e| panic!("Logger interrogation failed with {}", e))
+    );
+
+    info!("Executing requested command: {:?}", command);
 
     let result = match command {
         Commands::Compile { path } => compile_and_serialize(path),

@@ -32,6 +32,7 @@ use brooks_lib::mel::{
     scope::Scopes,
     tvs::{Struct, Type},
 };
+use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -213,7 +214,7 @@ async fn index(
     payload: web::Json<Mel>,
     peer: PeerAddr,
 ) -> actix_web::Result<String> {
-    println!("Serving request from {peer}");
+    info!("Serving request from {peer}");
 
     let clientip = peer.0.ip();
     let clientport = peer.0.port();
@@ -270,7 +271,7 @@ async fn index(
 pub async fn serve(ip: String, port: u16) -> std::io::Result<()> {
     use actix_web::{App, HttpServer};
 
-    println!("Serving on {}:{}", ip, port);
+    info!("Serving on {}:{}", ip, port);
     HttpServer::new(|| {
         App::new()
             .wrap(actix_cors::Cors::permissive())

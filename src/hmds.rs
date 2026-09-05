@@ -21,13 +21,15 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use actix_web::{App, HttpServer, delete, get, put, web};
+use actix_web::{App, HttpServer, delete, get, middleware::Logger, put, web};
 use brooks_lib::{
     cdni::spec::TypedHostMetadata,
     integrations::{self, hmds::ExpirableJsonValue},
 };
 use chrono::{DateTime, Duration, Utc};
 use clio::ClioPath;
+
+use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -44,6 +46,8 @@ pub type Hmds = (DateTime<Utc>, TypedHostMetadata<()>);
 
 #[derive(Debug, Clone)]
 pub struct HmdsWebConfiguration {
+    ip: String,
+    port: u16,
     hmds: Arc<Mutex<HashMap<String, Hmds>>>,
     timeout: Duration,
 }
@@ -160,6 +164,8 @@ pub async fn server(
     let metadata = Arc::new(Mutex::new(metadata));
 
     let web_configuration = HmdsWebConfiguration {
+        ip: ip.clone(),
+        port,
         hmds: metadata.clone(),
         timeout,
     };
@@ -174,25 +180,28 @@ pub async fn server(
     #[cfg(not(feature = "domain"))]
     let domain_configuration = HmdsDomainConfiguration {};
 
-    let http_configuration = web::Data::new(web_configuration.clone());
-
     let result = tokio::spawn(async move {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 Ok(())
             },
             result = socket_proxy_server(domain_configuration) => result,
-            result = HttpServer::new(move || {
-            App::new()
-                .app_data(http_configuration.clone())
-                .wrap(actix_cors::Cors::permissive())
-                .service(delete_hmd)
-                .service(add_hmd)
-                .service(status)
-                .service(qry)
-        })
-        .bind((ip, port))?
-        .run() => result,
+            result = {
+                info!("About to start HTTP HMDS server on http://{ip}:{port}/");
+                let inner_web_configuration = web_configuration.clone();
+                HttpServer::new(move || {
+                    App::new()
+                    .app_data(web::Data::new(inner_web_configuration.clone()))
+                    .wrap(Logger::default())
+                    .wrap(actix_cors::Cors::permissive())
+                    .service(delete_hmd)
+                    .service(add_hmd)
+                    .service(status)
+                    .service(qry)
+                })
+                .bind((web_configuration.ip, web_configuration.port))?
+                .run()
+            } => result,
         }
     })
     .await;
@@ -293,6 +302,7 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
         }
     }
 
+    info!("Listening for HMDS queries on UNIX domain socket at {server_path}");
     loop {
         // Wait for the socket to be readable
         let (mut client, _) = socket.accept().await?;
@@ -342,7 +352,7 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
 #[cfg(not(feature = "domain"))]
 pub async fn socket_proxy_server(_: HmdsDomainConfiguration) -> io::Result<()> {
     Err(io::Error::other(
-        "UNIX domain socket access to the proxy server is not supported in non-UNIX platforms.",
+        "UNIX domain socket access to the proxy server is not supported.",
     ))
 }
 
