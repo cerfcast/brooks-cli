@@ -16,12 +16,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::net::IpAddr;
-use std::sync::Arc;
 
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 
 use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
-use brooks_lib::mel::tvs::{BooleanBuiltin, BuiltinFunctionType, Path_ElementBuiltin};
+use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
+use brooks_lib::mel::scope::{Scope, builtin_function_types};
 use brooks_lib::mel::{
     analysis,
     compiler::compile,
@@ -79,9 +79,9 @@ fn req_type(header_type: Struct, uri_type: Struct) -> Struct {
     reqs
 }
 
-fn type_scope_from_req(value: &HttpRequest) -> Scopes<Type> {
+fn type_scope_from_req(value: &HttpRequest) -> Scope<Type> {
     // Set up the built-in variables for type checking.
-    let mut scope = Scopes::<Type>::default();
+    let mut scope = Scope::<Type>::default();
 
     let ht = header_type_from_req(value);
     let urit = uri_type();
@@ -97,13 +97,13 @@ fn value_scope_from_req(
     value: &HttpRequest,
     clientip: &IpAddr,
     clientport: u16,
-) -> Scopes<TypedValue> {
+) -> Scope<TypedValue> {
     let ht = header_type_from_req(value);
     let urit = uri_type();
     let reqt = req_type(ht.clone(), urit.clone());
 
     // Set up the built-in variables for interpreting.
-    let mut value_scope = Scopes::<TypedValue>::default();
+    let mut value_scope = Scope::<TypedValue>::default();
 
     let mut reqv = StructValue::new(reqt.clone());
 
@@ -215,37 +215,21 @@ async fn index(
 ) -> actix_web::Result<String> {
     println!("Serving request from {peer}");
 
-    let path_element_builtin = Path_ElementBuiltin {};
-    let boolean_builtin = BooleanBuiltin {};
-
     let clientip = peer.0.ip();
     let clientport = peer.0.port();
 
     // Set up the built-in variables for type checking.
-    let analysis_scopes = type_scope_from_req(&req);
+    let analysis_scopes = Scopes::<Type> {
+        scopes: vec![&type_scope_from_req(&req) + &builtin_function_types()],
+    };
 
     // Set up the built-in variables for interpreting.
-    let mut interp_scopes = value_scope_from_req(&req, &clientip, clientport);
-    interp_scopes = interp_scopes.insert(
-        &path_element_builtin.name(),
-        TypedValue {
-            value: Value::Function(Arc::new(path_element_builtin.clone())),
-            tipe: Type::Function(
-                Arc::new(path_element_builtin.return_type()),
-                path_element_builtin.parameters(),
-            ),
-        },
-    );
-    interp_scopes = interp_scopes.insert(
-        &boolean_builtin.name(),
-        TypedValue {
-            value: Value::Function(Arc::new(boolean_builtin.clone())),
-            tipe: Type::Function(
-                Arc::new(boolean_builtin.return_type()),
-                boolean_builtin.parameters(),
-            ),
-        },
-    );
+    let interp_scopes = Scopes::<TypedValue> {
+        scopes: vec![
+            &value_scope_from_req(&req, &clientip, clientport)
+                + &builtin_builtin_function_interpreters(),
+        ],
+    };
 
     let result = match compile(&payload.expr) {
         Ok(expr) => expr,

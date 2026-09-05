@@ -26,6 +26,7 @@ use actix_web::http::uri::{Authority, PathAndQuery};
 use actix_web::{HttpRequest, dev::PeerAddr};
 
 use awc::http::StatusCode;
+use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
 use brooks_lib::ps::interpret::{
     ProcessableRequestResponse, ProcessableRequestResponseError, PsInterpretValue, interpret_stage,
 };
@@ -84,6 +85,7 @@ where
     fn call(&self, mut req: ServiceRequest) -> Self::Future {
         if let Err(e) = interpret_stage(
             &self.crs,
+            &Some(builtin_builtin_function_interpreters()),
             &mut ActixServiceRequest(&mut req),
             brooks_lib::ps::interpret::PsInterpretMode::Request,
         ) {
@@ -101,6 +103,7 @@ where
                 let mut ars = ActixServiceResponse(&mut res);
                 match interpret_stage(
                     &crs,
+                    &Some(builtin_builtin_function_interpreters()),
                     &mut ars,
                     brooks_lib::ps::interpret::PsInterpretMode::Response,
                 ) {
