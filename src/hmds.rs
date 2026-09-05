@@ -17,7 +17,7 @@
 
 use std::{
     collections::HashMap,
-    fs, io,
+    io,
     sync::{Arc, Mutex},
 };
 
@@ -27,6 +27,8 @@ use brooks_lib::{
     integrations::{self, hmds::ExpirableJsonValue},
 };
 use chrono::{DateTime, Duration, Utc};
+
+#[cfg(feature = "domain")]
 use clio::ClioPath;
 
 use log::info;
@@ -40,7 +42,7 @@ use tokio::{
 };
 
 #[cfg(feature = "domain")]
-use std::path::Path;
+use std::{fs, path::Path};
 
 pub type Hmds = (DateTime<Utc>, TypedHostMetadata<()>);
 
@@ -155,7 +157,7 @@ async fn qry(
 pub async fn server(
     ip: String,
     port: u16,
-    path: ClioPath,
+    #[cfg(feature = "domain")] path: ClioPath,
     timeout: Duration,
     user: Option<String>,
     group: Option<String>,
@@ -208,6 +210,7 @@ pub async fn server(
 
     // Instead of using a Drop implementation (because that does not let us show an error),
     // delete the path to the domain socket here.
+    #[cfg(feature = "domain")]
     fs::remove_file(path.path())?;
 
     result?
@@ -350,10 +353,27 @@ pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<
 }
 
 #[cfg(not(feature = "domain"))]
+mod never_ready {
+    use std::{
+        io,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    pub(crate) struct NeverReady {}
+
+    impl Future for NeverReady {
+        type Output = io::Result<()>;
+
+        fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+            Poll::Pending
+        }
+    }
+}
+
+#[cfg(not(feature = "domain"))]
 pub async fn socket_proxy_server(_: HmdsDomainConfiguration) -> io::Result<()> {
-    Err(io::Error::other(
-        "UNIX domain socket access to the proxy server is not supported.",
-    ))
+    info!("UNIX domain socket access to the proxy server is not supported.");
+    never_ready::NeverReady {}.await
 }
 
 #[cfg(feature = "domain")]

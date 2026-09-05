@@ -155,8 +155,11 @@ enum Commands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+
+        #[cfg(feature = "domain")]
         #[arg(long, default_value = "/tmp/brooks/server")]
         path: clio::ClioPath,
+
         #[arg(long, default_value = "300", value_parser=clap::builder::ValueParser::new(parse_timeout_duration))]
         timeout: chrono::Duration,
 
@@ -517,9 +520,18 @@ async fn main() {
         Commands::HmdsServer {
             host,
             port,
+            timeout,
+        } => match hmds::server(
+            host,
+            port,
+            #[cfg(feature = "domain")]
             path,
             timeout,
-        } => match hmds::server(host, port, path, timeout, None, None).await {
+            None,
+            None,
+        )
+        .await
+        {
             Ok(_) => Ok(()),
             Err(e) => Err(CliError::SocketError(e)),
         },
