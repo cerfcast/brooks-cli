@@ -28,21 +28,19 @@ use brooks_lib::{
 };
 use chrono::{DateTime, Duration, Utc};
 
-#[cfg(feature = "domain")]
-use clio::ClioPath;
-
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[cfg(feature = "domain")]
+use clio::ClioPath;
+#[cfg(feature = "domain")]
+use std::{fs, path::Path};
+#[cfg(feature = "domain")]
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
 };
-
-#[cfg(feature = "domain")]
-use std::{fs, path::Path};
 
 pub type Hmds = (DateTime<Utc>, TypedHostMetadata<()>);
 
@@ -187,7 +185,7 @@ pub async fn server(
             _ = tokio::signal::ctrl_c() => {
                 Ok(())
             },
-            result = socket_proxy_server(domain_configuration) => result,
+            result = domain_hmds(domain_configuration) => result,
             result = {
                 info!("About to start HTTP HMDS server on http://{ip}:{port}/");
                 let inner_web_configuration = web_configuration.clone();
@@ -267,7 +265,7 @@ async fn read_entire(s: &mut UnixStream, d: &mut [u8]) -> io::Result<usize> {
 }
 
 #[cfg(feature = "domain")]
-pub async fn socket_proxy_server(config: HmdsDomainConfiguration) -> io::Result<()> {
+pub async fn domain_hmds(config: HmdsDomainConfiguration) -> io::Result<()> {
     let server_path = &config.server_path;
     let socket = UnixListener::bind(server_path.path())?;
 
@@ -371,7 +369,7 @@ mod never_ready {
 }
 
 #[cfg(not(feature = "domain"))]
-pub async fn socket_proxy_server(_: HmdsDomainConfiguration) -> io::Result<()> {
+pub async fn domain_hmds(_: HmdsDomainConfiguration) -> io::Result<()> {
     info!("UNIX domain socket access to the proxy server is not supported.");
     never_ready::NeverReady {}.await
 }
