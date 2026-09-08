@@ -56,8 +56,8 @@ use log::{LevelFilter, info};
 use crate::CliError::{ParseError, VerificationError};
 
 mod hmds;
+mod mel_explorer;
 mod proxy;
-mod serve;
 
 #[derive(Debug, Clone)]
 enum DebugLevel {
@@ -136,7 +136,7 @@ enum Commands {
         #[arg(long)]
         path: clio::ClioPath,
     },
-    Serve {
+    Explorer {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
         #[arg(long, default_value = "8080")]
@@ -494,7 +494,7 @@ async fn main() {
         Commands::Compile { path } => compile_and_serialize(path),
         Commands::Analyze { path } => compile_and_analyze(path),
         Commands::Interpret { path } => compile_and_interpret(path),
-        Commands::Serve { host, port } => serve::serve(host, port)
+        Commands::Explorer { host, port } => mel_explorer::serve_mel_explorer(host, port)
             .await
             .map_err(CliError::ServerError),
         Commands::Proxy { host, port, path } => match parse_and_analyze_processing_stages(path) {

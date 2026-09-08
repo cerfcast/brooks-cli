@@ -268,7 +268,7 @@ async fn index(
     }
 }
 
-pub async fn serve(ip: String, port: u16) -> std::io::Result<()> {
+pub async fn serve_mel_explorer(ip: String, port: u16) -> std::io::Result<()> {
     use actix_web::{App, HttpServer};
 
     info!("Serving on {}:{}", ip, port);
