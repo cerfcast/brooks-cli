@@ -18,6 +18,7 @@
 use std::fmt::Display;
 use std::io::Read;
 
+use ansi_term::Color;
 use ansi_term::{Color::Red, Style};
 #[allow(
     redundant_imports,
@@ -30,7 +31,8 @@ use brooks_lib;
 mod test;
 
 use brooks_lib::environment::scope::{Scope, Scopes};
-use brooks_lib::logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs};
+use brooks_lib::logging::{Formatter, LogMsg};
+use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
 
 use brooks_lib::mel::compiler::compile::{MelCompilerError, MelCompilerLocatableError};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
@@ -250,14 +252,7 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
                 Some(o) => println!("{}", o),
                 None => println!("Value missing"),
             }
-            println!("Log:");
-            println!(
-                "{}",
-                o.log.msgs(&LogMsgFormatter {
-                    newline: true,
-                    show_level: false
-                })
-            );
+            println!("{}", format_logs(o.log));
         }
         Err(e) => {
             print!("Error: {e}");
@@ -403,6 +398,30 @@ fn format_compiler_error(error: MelCompilerLocatableError, source: &str, path: &
         }
         _ => todo!(),
     }
+}
+
+struct AnsiLogMsgFormatter {}
+
+impl Formatter<LogMsg> for AnsiLogMsgFormatter {
+    fn format(&self, value: &LogMsg) -> String {
+        let mut msg_result = Color::Yellow.paint(value.level().to_string()).to_string() + ": ";
+        if let Some(loc) = value.location() {
+            msg_result  = msg_result + &Style::new().underline().paint(loc.to_string()).to_string() + ": ";
+        }
+        msg_result = msg_result + &value.msg();
+        msg_result
+    }
+}
+
+fn format_logs(logs: LogMsgs) -> String {
+    let mut result = Style::new().underline().paint("Logs:").to_string() + "\n";
+
+    for msg in logs.use_msgs() {
+        let msg_result = msg.pretty(&AnsiLogMsgFormatter {});
+        result = result + &msg_result + "\n";
+    }
+
+    result
 }
 
 fn format_analysis_error(error: MelAnalysisLocatableError, source: &str, path: &str) -> String {

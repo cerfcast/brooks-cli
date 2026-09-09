@@ -11,9 +11,14 @@ success: true
 exit_code: 0
 ----- stdout -----
 "to"
-Log:
-0 to 36: Evaluating function call expression
-0 to 12: Evaluating identifier expression
-12 to 36: Evaluating argument list expression
+[4mLogs:[0m
+[33mTrace[0m: [4m0 to 36[0m: Evaluating function call expression
+[33mTrace[0m: [4m0 to 12[0m: Evaluating identifier expression
+[33mTrace[0m: [4m12 to 36[0m: Evaluating argument list expression
+[33mTrace[0m: [4m13 to 32[0m: Evaluating argument list expression
+[33mTrace[0m: [4m13 to 32[0m: Evaluating literal expression
+[33mTrace[0m: [4m34 to 35[0m: Evaluating argument list expression
+[33mTrace[0m: [4m34 to 35[0m: Evaluating literal expression
+
 
 ----- stderr -----
