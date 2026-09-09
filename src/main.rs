@@ -29,11 +29,12 @@ use brooks_lib;
 #[cfg(test)]
 mod test;
 
+use brooks_lib::environment::scope::{Scope, Scopes};
 use brooks_lib::logging::{LogLevel::Trace, LogMsgFormatter, LogMsgs};
 
 use brooks_lib::mel::compiler::compile::{MelCompilerError, MelCompilerLocatableError};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
-use brooks_lib::mel::scope::{Scope, builtin_function_types, minimal_core_variable_types};
+use brooks_lib::mel::scope::{builtin_function_types, minimal_core_variable_types};
 use brooks_lib::mel::{
     analysis::{self, MelAnalysisError, MelAnalysisLocatableError},
     ast::AstVisitorDriver,
@@ -42,7 +43,6 @@ use brooks_lib::mel::{
         self,
         interpret::{MelInterpContext, MelInterpLocatableError, TypedValue},
     },
-    scope::Scopes,
     serializer::{AstTextSerializer, AstTextSerializerContext},
     tvs::Type,
 };

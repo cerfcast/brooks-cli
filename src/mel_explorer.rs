@@ -19,9 +19,10 @@ use std::net::IpAddr;
 
 use actix_web::{HttpRequest, dev::PeerAddr, http::uri::Scheme, post, web};
 
+use brooks_lib::environment::scope::{Scope, Scopes};
 use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
-use brooks_lib::mel::scope::{Scope, builtin_function_types};
+use brooks_lib::mel::scope::builtin_function_types;
 use brooks_lib::mel::{
     analysis,
     compiler::compile,
@@ -29,7 +30,6 @@ use brooks_lib::mel::{
         self,
         interpret::{MelInterpContext, StructValue, TypedValue, Value},
     },
-    scope::Scopes,
     tvs::{Struct, Type},
 };
 use log::info;
@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 struct Mel {
     pub expr: String,
 }
+
 
 #[derive(Serialize)]
 struct MelResponse {
