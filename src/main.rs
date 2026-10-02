@@ -17,6 +17,7 @@
 
 use std::fmt::Display;
 use std::io::Read;
+use std::str::FromStr;
 
 use ansi_term::Color;
 use ansi_term::{Color::Red, Style};
@@ -30,13 +31,16 @@ use brooks_lib;
 #[cfg(test)]
 mod test;
 
+use brooks_lib::cdni::ps::verify::PsVerificationError;
 use brooks_lib::environment::scope::{Scope, Scopes};
+use brooks_lib::integrations::hmds::HmdsServerConfiguration;
 use brooks_lib::logging::{Formatter, LogMsg};
 use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
 
 use brooks_lib::mel::compiler::compile::{MelCompilerError, MelCompilerLocatableError};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
 use brooks_lib::mel::scope::{builtin_function_types, minimal_core_variable_types};
+use brooks_lib::mel::types::Type;
 use brooks_lib::mel::{
     analysis::{self, MelAnalysisError, MelAnalysisLocatableError},
     ast::AstVisitorDriver,
@@ -46,10 +50,8 @@ use brooks_lib::mel::{
         interpret::{MelInterpContext, MelInterpLocatableError, TypedValue},
     },
     serializer::{AstTextSerializer, AstTextSerializerContext},
-    tvs::Type,
 };
-use brooks_lib::ps::spec::{TypedGenericStage, TypedStage};
-use brooks_lib::ps::verify::{PsVerificationError, PsVerificationKey, verify_ps_request_stage};
+use brooks_lib::tools::prr;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 use clio::ClioPath;
 use flexi_logger::{FileSpec, LogSpecification, Logger};
@@ -150,7 +152,7 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         port: u16,
         #[arg(long)]
-        path: clio::ClioPath,
+        path: String,
     },
     HmdsServer {
         #[arg(long, default_value = "127.0.0.1")]
@@ -172,6 +174,71 @@ enum Commands {
         #[arg(long)]
         group: Option<String>,
     },
+}
+
+#[derive(Debug)]
+struct HttpHttpRequest(http::Request<Vec<u8>>);
+
+impl prr::Prr<Vec<u8>> for HttpHttpRequest {
+    fn headers(&self) -> Vec<(String, http::HeaderValue)> {
+        self.0
+            .headers()
+            .iter()
+            .map(|f| (f.0.to_string(), f.1.clone()))
+            .collect()
+    }
+
+    fn set_header_value(&mut self, _header: &str, _value: &str) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn clear_headers(&mut self) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn remove_header(&mut self, _header: &str) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn add_header(&mut self, _header: &str, _value: &str) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn url(&self) -> prr::Result<url::Url> {
+        Ok(url::Url::from_str("http://www.example.com/").expect("Could not convert simple URL"))
+    }
+
+    fn set_url(&mut self, _url: &url::Url) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn set_status(&mut self, _response: &u16) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn get_status(&self) -> prr::Result<http::StatusCode> {
+        unreachable!()
+    }
+
+    fn set_body(&mut self, _body: &Vec<u8>) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn get_body(&self) -> prr::Result<&Vec<u8>> {
+        unreachable!()
+    }
+
+    fn set_method(&mut self, _method: &http::Method) -> prr::Result<()> {
+        unreachable!()
+    }
+
+    fn get_method(&self) -> http::Method {
+        unreachable!()
+    }
+
+    fn tpe(&self) -> prr::PrrType {
+        unreachable!()
+    }
 }
 
 #[allow(clippy::result_large_err)]
@@ -223,12 +290,11 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
         scopes: vec![&minimal_core_variable_types() + &builtin_function_types()],
     };
 
-    let values_scopes = Scopes::<TypedValue> {
-        scopes: vec![
-            &Into::<Scope<TypedValue>>::into(http::Request::new("body"))
-                + &builtin_builtin_function_interpreters(),
-        ],
-    };
+    let values_scopes: Scopes<TypedValue> =
+        (&Into::<Scope<TypedValue>>::into(
+            &HttpHttpRequest(http::Request::new(vec![])) as &dyn prr::Prr<Vec<u8>>
+        ) + &builtin_builtin_function_interpreters())
+            .into();
     let source = &String::from_utf8_lossy(&to_parse);
 
     let result = match compile(source) {
@@ -259,32 +325,6 @@ fn compile_and_interpret(path: clio::ClioPath) -> CliResult<()> {
         }
     };
     Ok(())
-}
-
-#[allow(clippy::result_large_err)]
-fn parse_and_analyze_processing_stages(
-    path: clio::ClioPath,
-) -> CliResult<TypedStage<PsVerificationKey>> {
-    let mut f = path
-        .clone()
-        .open()
-        .map_err(|_| CliError::BadPath(path.clone()))?;
-
-    let mut to_parse: Vec<u8> = vec![];
-    f.read_to_end(&mut to_parse)
-        .map_err(|_| CliError::BadPath(path.clone()))?;
-
-    let source = &String::from_utf8_lossy(&to_parse);
-
-    let result =
-        serde_json::from_str::<TypedGenericStage>(source).map_err(|e| ParseError(e.to_string()))?;
-
-    let types_scope = Scopes::<Type> {
-        scopes: vec![minimal_core_variable_types()],
-    };
-    let result = verify_ps_request_stage(&result, types_scope).map_err(VerificationError)?;
-
-    Ok(result)
 }
 
 #[allow(clippy::result_large_err)]
@@ -320,6 +360,7 @@ pub enum CliError {
     AnalysisError(Box<MelAnalysisLocatableError>),
     InterpreterError(Box<MelInterpLocatableError>),
     VerificationError(Box<PsVerificationError>),
+    ConfigurationError(Box<std::io::Error>),
     ParseError(String),
     ServerError(std::io::Error),
     SocketError(std::io::Error),
@@ -333,6 +374,7 @@ impl Display for CliError {
             CliError::AnalysisError(mel_analysis_locatable_error) => {
                 write!(f, "Analysis error: {mel_analysis_locatable_error}")
             }
+            CliError::ConfigurationError(e) => write!(f, "Configuration error: {e}"),
             CliError::InterpreterError(mel_interp_locatable_error) => {
                 write!(f, "Interpreter error: {mel_interp_locatable_error}")
             }
@@ -406,7 +448,8 @@ impl Formatter<LogMsg> for AnsiLogMsgFormatter {
     fn format(&self, value: &LogMsg) -> String {
         let mut msg_result = Color::Yellow.paint(value.level().to_string()).to_string() + ": ";
         if let Some(loc) = value.location() {
-            msg_result  = msg_result + &Style::new().underline().paint(loc.to_string()).to_string() + ": ";
+            msg_result =
+                msg_result + &Style::new().underline().paint(loc.to_string()).to_string() + ": ";
         }
         msg_result = msg_result + &value.msg();
         msg_result
@@ -476,7 +519,8 @@ fn format_error(error: MelAnalysisLocatableError, source: &str, path: &str) -> S
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
+// Multi threaded runtime needed for the Brooks library.
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let Cli {
         debug: raw_debug,
@@ -516,12 +560,14 @@ async fn main() {
         Commands::Explorer { host, port } => mel_explorer::serve_mel_explorer(host, port)
             .await
             .map_err(CliError::ServerError),
-        Commands::Proxy { host, port, path } => match parse_and_analyze_processing_stages(path) {
-            Ok(crs) => proxy::proxy(host, port, crs)
-                .await
-                .map_err(CliError::ServerError),
-            Err(e) => Err(e),
-        },
+        Commands::Proxy { host, port, path } => {
+            match HmdsServerConfiguration::new_by_sense(&path) {
+                Ok(config) => proxy::proxy(host, port, config)
+                    .await
+                    .map_err(CliError::ServerError),
+                Err(e) => Err(CliError::ConfigurationError(e.into())),
+            }
+        }
 
         #[cfg(feature = "domain")]
         Commands::HmdsServer {

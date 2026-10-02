@@ -12,7 +12,7 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Error: Bad path: "./not-found/"
+Error: Configuration error: Could not open connection to HMD server over UNIX domain socket at path ./not-found/
 Usage: [BROOKS_CLI] [OPTIONS] <COMMAND>
 
 Commands:

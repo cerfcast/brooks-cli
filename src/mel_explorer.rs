@@ -23,6 +23,7 @@ use brooks_lib::environment::scope::{Scope, Scopes};
 use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
 use brooks_lib::mel::scope::builtin_function_types;
+use brooks_lib::mel::types::{Struct, Type};
 use brooks_lib::mel::{
     analysis,
     compiler::compile,
@@ -30,7 +31,6 @@ use brooks_lib::mel::{
         self,
         interpret::{MelInterpContext, StructValue, TypedValue, Value},
     },
-    tvs::{Struct, Type},
 };
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,6 @@ use serde::{Deserialize, Serialize};
 struct Mel {
     pub expr: String,
 }
-
 
 #[derive(Serialize)]
 struct MelResponse {
@@ -117,7 +116,7 @@ fn value_scope_from_req(
                 &header.0.to_string().replace("-", "_").to_lowercase(),
                 TypedValue {
                     value: Value::String(x.to_string()),
-                    tipe: Type::String,
+                    tpe: Type::String,
                 },
             )
             .expect("header field value is mistyped");
@@ -130,7 +129,7 @@ fn value_scope_from_req(
         "path",
         TypedValue {
             value: Value::String(value.uri().path().to_string()),
-            tipe: Type::String,
+            tpe: Type::String,
         },
     )
     .expect("path field value is mistyped.");
@@ -139,7 +138,7 @@ fn value_scope_from_req(
         "query",
         TypedValue {
             value: Value::String(value.uri().query().unwrap_or_default().to_string()),
-            tipe: Type::String,
+            tpe: Type::String,
         },
     )
     .expect("query field value is mistyped.");
@@ -148,7 +147,7 @@ fn value_scope_from_req(
         "h",
         TypedValue {
             value: Value::Struct(hv),
-            tipe: Type::Struct(ht.clone()),
+            tpe: Type::Struct(ht.clone()),
         },
     )
     .expect("h field value is mistyped.");
@@ -157,7 +156,7 @@ fn value_scope_from_req(
         "uri",
         TypedValue {
             value: Value::Struct(uriv),
-            tipe: Type::Struct(urit.clone()),
+            tpe: Type::Struct(urit.clone()),
         },
     )
     .expect("uri field value is mistyped.");
@@ -166,7 +165,7 @@ fn value_scope_from_req(
         "method",
         TypedValue {
             value: Value::String(value.method().to_string()),
-            tipe: Type::String,
+            tpe: Type::String,
         },
     )
     .expect("method field value is mistyped.");
@@ -175,7 +174,7 @@ fn value_scope_from_req(
         "scheme",
         TypedValue {
             value: Value::String(value.uri().scheme().unwrap_or(&Scheme::HTTP).to_string()),
-            tipe: Type::String,
+            tpe: Type::String,
         },
     )
     .expect("Header field value is mistyped.");
@@ -184,7 +183,7 @@ fn value_scope_from_req(
         "clientip",
         TypedValue {
             value: Value::IPAddress(*clientip),
-            tipe: Type::IPAddress,
+            tpe: Type::IPAddress,
         },
     )
     .expect("clientip field value is mistyped.");
@@ -193,7 +192,7 @@ fn value_scope_from_req(
         "clientport",
         TypedValue {
             value: Value::Integer(clientport as i64),
-            tipe: Type::Integer,
+            tpe: Type::Integer,
         },
     )
     .expect("clientport field value is mistyped.");
@@ -202,7 +201,7 @@ fn value_scope_from_req(
         "req",
         TypedValue {
             value: Value::Struct(reqv),
-            tipe: Type::Struct(reqt),
+            tpe: Type::Struct(reqt),
         },
     );
 

@@ -23,7 +23,7 @@ use std::{
 
 use actix_web::{App, HttpServer, delete, get, middleware::Logger, put, web};
 use brooks_lib::{
-    cdni::spec::TypedHostMetadata,
+    cdni::md::spec::TypedHostMetadata,
     integrations::{self, hmds::ExpirableJsonValue},
 };
 use chrono::{DateTime, Duration, Utc};

@@ -15,320 +15,234 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::fmt::Display;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
-use actix_utils::future::ok;
-use actix_web::dev::ServiceRequest;
-use actix_web::error::{ErrorBadGateway, ErrorInternalServerError};
-use actix_web::get;
 use actix_web::http::header::{HeaderName, HeaderValue};
-use actix_web::http::uri::{Authority, PathAndQuery};
 use actix_web::{HttpRequest, dev::PeerAddr};
+use actix_web::{get, web};
 
 use awc::http::StatusCode;
+use awc::http::header::HOST;
+use brooks_lib::cdni::gmdp::ProcessedRequestResponse;
+use brooks_lib::environment::scope::{Scope, Scopes};
+use brooks_lib::integrations::common::safe_brooks_integration_handle;
+use brooks_lib::integrations::hmds::{HmdsConfiguration, HmdsServerConfiguration};
+use brooks_lib::logging::LogLevel::Debug;
+use brooks_lib::logging::{LogMsgFormatter, LogMsgs};
 use brooks_lib::mel::interpreter::builtins::builtin_builtin_function_interpreters;
-use brooks_lib::ps::interpret::{
-    ProcessableRequestResponse, ProcessableRequestResponseError, PsInterpretValue, interpret_stage,
-};
-use brooks_lib::ps::spec::TypedStage;
-use brooks_lib::ps::verify::PsVerificationKey;
-use futures_util::FutureExt;
-use http::Uri;
-use log::info;
+use brooks_lib::mel::interpreter::interpret::TypedValue;
+use brooks_lib::tools::prr;
+use log::Level::Trace;
+use log::{info, log};
 
-use std::future::{Ready, ready};
+use std::error::Error as StdError;
 
-use actix_web::{
-    Error,
-    dev::{Service, ServiceResponse, Transform, forward_ready},
-};
-use futures_util::future::LocalBoxFuture;
+#[derive(Debug)]
+struct ProxyHttpRequest<'a>(&'a actix_web::HttpRequest);
+struct ProxyHttpResponse<'a>(&'a http::Response<Vec<u8>>);
 
-pub struct ProcessingStagesMiddleware {
-    crs: TypedStage<PsVerificationKey>,
+#[derive(Debug)]
+enum ActixConversionError {
+    Status(Box<dyn StdError>),
+    HeaderName(Box<dyn StdError>),
+    HeaderValue(Box<dyn StdError>),
+    Header(Box<dyn StdError>),
+    Body(Box<dyn StdError>),
 }
 
-impl<S> Transform<S, ServiceRequest> for ProcessingStagesMiddleware
-where
-    S: Service<ServiceRequest, Response = ServiceResponse, Error = Error>,
-    S::Future: 'static,
-{
-    type Response = ServiceResponse;
-    type Error = Error;
-    type InitError = ();
-    type Transform = ProcessingStagesMiddlewareImpl<S>;
-    type Future = Ready<Result<Self::Transform, Self::InitError>>;
-
-    fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(ProcessingStagesMiddlewareImpl {
-            service,
-            crs: self.crs.clone(),
-        }))
-    }
-}
-
-pub struct ProcessingStagesMiddlewareImpl<S> {
-    service: S,
-    crs: TypedStage<PsVerificationKey>,
-}
-
-impl<S> Service<ServiceRequest> for ProcessingStagesMiddlewareImpl<S>
-where
-    S: Service<ServiceRequest, Response = ServiceResponse, Error = Error>,
-    S::Future: 'static,
-{
-    type Response = ServiceResponse;
-    type Error = Error;
-    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    forward_ready!(service);
-
-    fn call(&self, mut req: ServiceRequest) -> Self::Future {
-        if let Err(e) = interpret_stage(
-            &self.crs,
-            &Some(builtin_builtin_function_interpreters()),
-            &mut ActixServiceRequest(&mut req),
-            brooks_lib::ps::interpret::PsInterpretMode::Request,
-        ) {
-            return ok(req.error_response(ErrorInternalServerError(e.to_string()))).boxed_local();
-        }
-
-        info!("Attempting to use PS for req: {:?}", req);
-        let fut = self.service.call(req);
-
-        {
-            let crs = self.crs.clone();
-            Box::pin(async move {
-                let mut res = fut.await?;
-
-                let mut ars = ActixServiceResponse(&mut res);
-                match interpret_stage(
-                    &crs,
-                    &Some(builtin_builtin_function_interpreters()),
-                    &mut ars,
-                    brooks_lib::ps::interpret::PsInterpretMode::Response,
-                ) {
-                    Ok((PsInterpretValue::SyntheticResponse(s), _)) => {
-                        info!("After processing using PS, there is a response: {s:?}");
-                        res.headers_mut().clear();
-                        for header in s.headers() {
-                            res.headers_mut().insert(
-                                HeaderName::from_str(header.0.as_str()).expect("TODO"),
-                                HeaderValue::from_bytes(header.1.as_bytes()).expect("TODO"),
-                            );
-                        }
-                        res.response_mut().head_mut().status =
-                            StatusCode::from_u16(s.status().as_u16()).expect("TODO");
-                        Ok(res.map_body(|_, _| s.body().clone()).map_into_boxed_body())
-                    }
-                    Ok(_) => Ok(res),
-                    Err(e) => Ok(res.error_response(ErrorInternalServerError(e.to_string()))),
-                }
-            })
+impl Display for ActixConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActixConversionError::Status(error) => write!(f, "Bad status: {error}"),
+            ActixConversionError::HeaderName(error) => write!(f, "Bad header name: {error}"),
+            ActixConversionError::HeaderValue(error) => write!(f, "Bad header value: {error}"),
+            ActixConversionError::Header(error) => write!(f, "Bad header: {error}"),
+            ActixConversionError::Body(error) => write!(f, "Bad body: {error}"),
         }
     }
 }
 
-#[derive(Debug)]
-struct ActixServiceResponse<'a>(&'a mut ServiceResponse);
+impl StdError for ActixConversionError {}
 
-impl<'a> ProcessableRequestResponse for ActixServiceResponse<'a> {
-    fn header_value(&self) -> Option<String> {
-        None
-    }
+/// Support conversion from http::Response to actix_web::HttpResponse.
+impl<'a> TryFrom<ProxyHttpResponse<'a>> for actix_web::HttpResponse<Vec<u8>> {
+    type Error = ActixConversionError;
 
-    fn headers(&self) -> Vec<String> {
-        todo!()
-    }
-
-    fn set_header_value(
-        &mut self,
-        header: &str,
-        value: &str,
-    ) -> Result<(), ProcessableRequestResponseError> {
-        self.0.headers_mut().insert(
-            HeaderName::from_str(header).expect("Cannot convert header name"),
-            HeaderValue::from_str(value).expect("Cannot convert header value"),
+    fn try_from(value: ProxyHttpResponse<'a>) -> Result<Self, Self::Error> {
+        let mut builder = actix_web::HttpResponseBuilder::new(
+            StatusCode::from_u16(value.0.status().as_u16())
+                .map_err(|e| ActixConversionError::Status(e.into()))?,
         );
-        Ok(())
-    }
 
-    fn remove_header(&mut self, header: &str) -> Result<(), ProcessableRequestResponseError> {
-        self.0.headers_mut().remove(header);
-        Ok(())
-    }
+        for (name, value) in value.0.headers() {
+            builder = builder
+                .append_header((
+                    HeaderName::from_str(name.as_str())
+                        .map_err(|e| ActixConversionError::HeaderName(e.into()))?,
+                    HeaderValue::from_str(
+                        value
+                            .to_str()
+                            .map_err(|e| ActixConversionError::HeaderValue(e.into()))?,
+                    )
+                    .map_err(|e| ActixConversionError::Header(e.into()))?,
+                ))
+                .take();
+        }
 
-    fn add_header(
-        &mut self,
-        header: &str,
-        value: &str,
-    ) -> Result<(), ProcessableRequestResponseError> {
-        self.0.headers_mut().append(
-            HeaderName::from_str(header).map_err(|_| ProcessableRequestResponseError::BadValue)?,
-            HeaderValue::from_str(value).map_err(|_| ProcessableRequestResponseError::BadValue)?,
-        );
-        Ok(())
-    }
-    fn uri(&self) -> std::result::Result<http::Uri, ProcessableRequestResponseError> {
-        http::Uri::builder()
-            .scheme(self.0.request().uri().scheme_str().unwrap_or("https"))
-            .path_and_query(
-                self.0
-                    .request()
-                    .uri()
-                    .path_and_query()
-                    .unwrap_or(&PathAndQuery::from_static(""))
-                    .as_str(),
-            )
-            .authority(
-                self.0
-                    .request()
-                    .uri()
-                    .authority()
-                    .unwrap_or(&Authority::from_static("127.0.0.1"))
-                    .to_string(),
-            )
-            .build()
-            .map_err(|_| ProcessableRequestResponseError::BadValue)
-    }
-
-    fn set_uri(&mut self, _uri: &Uri) -> Result<(), ProcessableRequestResponseError> {
-        Err(ProcessableRequestResponseError::InvalidMode)
-    }
-
-    fn set_response(&mut self, response: &u16) -> Result<(), ProcessableRequestResponseError> {
-        let sc = actix_web::http::StatusCode::from_u16(*response)
-            .map_err(|_| ProcessableRequestResponseError::BadValue)?;
-        self.0.response_mut().head_mut().status = sc;
-        Ok(())
-    }
-
-    fn clear_headers(&mut self) -> brooks_lib::ps::interpret::ProcessableRequestResponseResult<()> {
-        todo!()
+        builder
+            .message_body(value.0.body().clone())
+            .map_err(|e| ActixConversionError::Body(e.into()))
     }
 }
 
-#[derive(Debug)]
-struct ActixServiceRequest<'a>(&'a mut ServiceRequest);
+impl<'a> TryFrom<ProxyHttpRequest<'a>> for http::Request<Vec<u8>> {
+    type Error = ActixConversionError;
+    fn try_from(
+        value: ProxyHttpRequest<'a>,
+    ) -> Result<http::Request<std::vec::Vec<u8>>, Self::Error> {
+        let mut builder = http::request::Builder::new();
 
-impl<'a> ProcessableRequestResponse for ActixServiceRequest<'a> {
-    fn header_value(&self) -> Option<String> {
-        todo!()
-    }
+        for (name, value) in value.0.headers() {
+            builder = builder.header(
+                http::HeaderName::from_str(name.as_str())
+                    .map_err(|e| ActixConversionError::HeaderName(e.into()))?,
+                http::HeaderValue::from_str(
+                    value
+                        .to_str()
+                        .map_err(|e| ActixConversionError::HeaderName(e.into()))?,
+                )
+                .map_err(|e| ActixConversionError::Header(e.into()))?,
+            );
+        }
 
-    fn headers(&self) -> Vec<String> {
-        todo!()
-    }
+        builder = builder.method(value.0.method().as_str());
 
-    fn set_header_value(
-        &mut self,
-        header: &str,
-        value: &str,
-    ) -> Result<(), ProcessableRequestResponseError> {
-        self.0.headers_mut().insert(
-            HeaderName::from_str(header).expect("Cannot convert header name"),
-            HeaderValue::from_str(value).expect("Cannot convert header value"),
-        );
-        Ok(())
-    }
+        builder = builder.uri(value.0.full_url().as_str());
 
-    fn remove_header(&mut self, header: &str) -> Result<(), ProcessableRequestResponseError> {
-        self.0.headers_mut().remove(header);
-        Ok(())
-    }
-
-    fn add_header(
-        &mut self,
-        header: &str,
-        value: &str,
-    ) -> Result<(), ProcessableRequestResponseError> {
-        self.0.headers_mut().append(
-            HeaderName::from_str(header).map_err(|_| ProcessableRequestResponseError::BadValue)?,
-            HeaderValue::from_str(value).map_err(|_| ProcessableRequestResponseError::BadValue)?,
-        );
-        Ok(())
-    }
-
-    fn uri(&self) -> std::result::Result<http::Uri, ProcessableRequestResponseError> {
-        info!(
-            "Retrieving URI from ProcessableRequestResponse: {}",
-            self.0.uri()
-        );
-        http::Uri::builder()
-            .scheme(self.0.uri().scheme_str().unwrap_or("https"))
-            .path_and_query(
-                self.0
-                    .uri()
-                    .path_and_query()
-                    .unwrap_or(&PathAndQuery::from_static(""))
-                    .as_str(),
-            )
-            .authority(
-                self.0
-                    .uri()
-                    .authority()
-                    .unwrap_or(&Authority::from_static("127.0.0.1"))
-                    .to_string(),
-            )
-            .build()
-            .map_err(|_| ProcessableRequestResponseError::BadValue)
-    }
-
-    fn set_uri(&mut self, _uri: &Uri) -> Result<(), ProcessableRequestResponseError> {
-        self.0.head_mut().uri = actix_web::http::Uri::from_str(&_uri.to_string())
-            .map_err(|_| ProcessableRequestResponseError::BadValue)?;
-        Ok(())
-    }
-
-    fn set_response(&mut self, _response: &u16) -> Result<(), ProcessableRequestResponseError> {
-        Err(ProcessableRequestResponseError::InvalidMode)
-    }
-
-    fn clear_headers(&mut self) -> brooks_lib::ps::interpret::ProcessableRequestResponseResult<()> {
-        todo!()
+        builder
+            .body(vec![])
+            .map_err(|e| ActixConversionError::Body(e.into()))
     }
 }
 
-fn client_added_header(hn: &str) -> bool {
-    hn == "host" || hn == "content-length" || hn == "accept-encoding" || hn == "date"
-}
-
-#[get("/proxy/")]
-async fn index(req: HttpRequest, _peer: PeerAddr) -> actix_web::Result<String> {
-    let query_proxy_url = req.query_string();
-    info!("Proxying a request for {query_proxy_url}");
-    let proxied_url = if !query_proxy_url.is_empty() {
-        &actix_web::http::Uri::from_str(req.query_string()).map_err(ErrorBadGateway)?
-    } else {
-        req.uri()
+#[get("{tail}*")]
+async fn index(
+    req: HttpRequest,
+    data: web::Data<Arc<Mutex<HmdsConfiguration>>>,
+    _peer: PeerAddr,
+) -> actix_web::HttpResponse<Vec<u8>> {
+    let host_header = match req.headers().get(HOST) {
+        Some(host_header) => host_header.clone(),
+        None => {
+            return actix_web::HttpResponse::InternalServerError()
+                .message_body("Missing HOST header".to_string().into())
+                .expect("Could not construct error response.");
+        }
     };
-    let client = awc::Client::default();
-    let mut request = client.get(proxied_url);
 
-    // Use any additional headers from the original query, except for the ones
-    // that are going to be set by the client (e.g., host).
-    for header in req.headers() {
-        if !client_added_header(header.0.as_str()) {
-            request = request.insert_header_if_none(header);
+    let key = match host_header.to_str() {
+        Ok(key) => key.to_string(),
+        Err(_) => {
+            return actix_web::HttpResponse::InternalServerError()
+                .message_body("Could not convert HOST header to string".to_string().into())
+                .expect("Could not construct error response.");
         }
-    }
+    };
 
-    let mut response = request.send().await.map_err(ErrorBadGateway)?;
-    String::from_utf8(response.body().await.map_err(ErrorBadGateway)?.to_vec())
-        .map_err(ErrorBadGateway)
+    let http_request: http::Request<Vec<u8>> = match ProxyHttpRequest(&req).try_into() {
+        Ok(req) => req,
+        Err(e) => {
+            return actix_web::HttpResponse::InternalServerError()
+                .message_body(e.to_string().into())
+                .expect("Could not construct error response.");
+        }
+    };
+
+    let prr = match TryInto::<ProcessedRequestResponse>::try_into(&http_request) {
+        Ok(prr) => prr,
+        Err(e) => {
+            return actix_web::HttpResponse::InternalServerError()
+                .message_body(e.to_string().into())
+                .expect("Could not construct error response.");
+        }
+    };
+
+    let processing_result = match tokio::runtime::Handle::current()
+        .spawn_blocking(move || {
+            let scopes: Scopes<TypedValue> = (&builtin_builtin_function_interpreters()
+                + &Scope::<TypedValue>::from(&prr as &dyn prr::Prr<Vec<u8>>))
+                .into();
+
+            let mut config = data.try_lock().expect("Could not lock the configuration.");
+            let brooks_log = LogMsgs::new_with_prefix("CLI Proxy", Debug);
+            let runtime = tokio::runtime::Handle::current();
+
+            let processing_result = safe_brooks_integration_handle(
+                &http_request,
+                scopes,
+                &key,
+                &mut config,
+                &runtime,
+                brooks_log,
+            );
+
+            let (res, logs) = match processing_result {
+                Ok((status, response, logs)) => (Ok((status, response)), logs),
+                Err((e, logs)) => (Err(format!("{}", e)), logs),
+            };
+
+            for logmsg in logs.use_msgs() {
+                log!(
+                    logmsg.level().into(),
+                    "{}",
+                    logmsg.pretty(&LogMsgFormatter {
+                        newline: false,
+                        show_level: true
+                    })
+                )
+            }
+
+            res
+        })
+        .await
+    {
+        Ok(pr) => pr,
+        Err(e) => {
+            return actix_web::HttpResponse::InternalServerError()
+                .message_body(e.to_string().into())
+                .expect("Could not construct error response.");
+        }
+    };
+
+    let (_status, response) = match processing_result {
+        Ok((status, response)) => (status, response),
+        Err(e) => {
+            return actix_web::HttpResponse::InternalServerError()
+                .message_body(e.to_string().into())
+                .expect("Could not construct error response.");
+        }
+    };
+
+    match ProxyHttpResponse(&response).try_into() {
+        Ok(actix_resp) => actix_resp,
+        Err(e) => actix_web::HttpResponse::InternalServerError()
+            .message_body(e.to_string().into())
+            .expect("Could not construct error response."),
+    }
 }
 
-pub async fn proxy(
-    ip: String,
-    port: u16,
-    crs: TypedStage<PsVerificationKey>,
-) -> std::io::Result<()> {
-    use actix_web::{App, HttpServer};
+pub async fn proxy(ip: String, port: u16, config: HmdsServerConfiguration) -> std::io::Result<()> {
+    use actix_web::{App, HttpServer, middleware::Logger};
+
+    let hmds_config: Arc<Mutex<HmdsConfiguration>> = Arc::new(Mutex::new(config.into()));
 
     info!("Proxying on {}:{}", ip, port);
     HttpServer::new(move || {
         App::new()
-            .wrap(ProcessingStagesMiddleware { crs: crs.clone() })
+            .app_data(web::Data::new(hmds_config.clone()))
+            .wrap(Logger::default().log_level(Trace))
             .wrap(actix_cors::Cors::permissive())
             .service(index)
     })
