@@ -36,7 +36,8 @@
                                                             "generic-metadata-type": "MI.SyntheticResponse",
                                                             "generic-metadata-value": {
                                                                 "body": "\"using builtin mel string functions: \" . upper(\"one\")",
-                                                                "body-is-expression": true
+                                                                "body-is-expression": true,
+																																"response-status": "200"
                                                             }
                                                         }
                                                     }
