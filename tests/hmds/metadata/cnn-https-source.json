@@ -2,13 +2,15 @@
     "generic-metadata-type": "MI.HostMetadata",
     "generic-metadata-value": {
         "metadata": [
-						{
+            {
                 "generic-metadata-type": "MI.Source",
                 "generic-metadata-value": {
-												"endpoints": [ "151.101.3.5:443" ],
-												"protocol": "http/1.1" 
-								}
-						},
+                    "endpoints": [
+                        "151.101.3.5:443"
+                    ],
+                    "protocol": "http/1.1"
+                }
+            },
             {
                 "generic-metadata-type": "MI.ClientRequestStage",
                 "generic-metadata-value": {
@@ -36,8 +38,18 @@
                                                         "header-transform": {
                                                             "generic-metadata-type": "MI.HeaderTransform",
                                                             "generic-metadata-value": {
-                                                                "delete": [],
+                                                                "delete": [
+                                                                    "host"
+                                                                ],
                                                                 "add": [
+                                                                    {
+                                                                        "generic-metadata-type": "MI.Header",
+                                                                        "generic-metadata-value": {
+                                                                            "name": "host",
+                                                                            "value": "www.cnn.com",
+                                                                            "value-is-expression": false
+                                                                        }
+                                                                    },
                                                                     {
                                                                         "generic-metadata-type": "MI.Header",
                                                                         "generic-metadata-value": {
@@ -81,7 +93,7 @@
                                                         "header-transform": {
                                                             "generic-metadata-type": "MI.HeaderTransform",
                                                             "generic-metadata-value": {
-                                                                "delete": [ ],
+                                                                "delete": [],
                                                                 "add": [
                                                                     {
                                                                         "generic-metadata-type": "MI.Header",
