@@ -33,7 +33,6 @@ mod test;
 
 use brooks_lib::cdni::ps::verify::PsVerificationError;
 use brooks_lib::environment::scope::{Scope, Scopes};
-use brooks_lib::integrations::hmds::HmdsServerConfiguration;
 use brooks_lib::logging::{Formatter, LogMsg};
 use brooks_lib::logging::{LogLevel::Trace, LogMsgs};
 
@@ -59,9 +58,7 @@ use log::{LevelFilter, info};
 
 use crate::CliError::{ParseError, VerificationError};
 
-mod hmds;
 mod mel_explorer;
-mod proxy;
 
 #[derive(Debug, Clone)]
 enum DebugLevel {
@@ -145,34 +142,6 @@ enum Commands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
-    },
-    Proxy {
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-        #[arg(long)]
-        path: String,
-    },
-    HmdsServer {
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-
-        #[cfg(feature = "domain")]
-        #[arg(long, default_value = "/tmp/brooks/server")]
-        path: clio::ClioPath,
-
-        #[arg(long, default_value = "300", value_parser=clap::builder::ValueParser::new(parse_timeout_duration))]
-        timeout: chrono::Duration,
-
-        #[cfg(feature = "domain")]
-        #[arg(long)]
-        user: Option<String>,
-        #[cfg(feature = "domain")]
-        #[arg(long)]
-        group: Option<String>,
     },
 }
 
@@ -363,7 +332,6 @@ pub enum CliError {
     ConfigurationError(Box<std::io::Error>),
     ParseError(String),
     ServerError(std::io::Error),
-    SocketError(std::io::Error),
 }
 pub type CliResult<T> = Result<T, CliError>;
 
@@ -384,7 +352,6 @@ impl Display for CliError {
             ),
             ParseError(pe) => write!(f, "Parsing error: {pe}"),
             CliError::ServerError(error) => write!(f, "Server error: {error}"),
-            CliError::SocketError(error) => write!(f, "UNIX Socket error: {error}"),
         }
     }
 }
@@ -560,46 +527,6 @@ async fn main() {
         Commands::Explorer { host, port } => mel_explorer::serve_mel_explorer(host, port)
             .await
             .map_err(CliError::ServerError),
-        Commands::Proxy { host, port, path } => {
-            match HmdsServerConfiguration::new_by_sense(&path) {
-                Ok(config) => proxy::proxy(host, port, config)
-                    .await
-                    .map_err(CliError::ServerError),
-                Err(e) => Err(CliError::ConfigurationError(e.into())),
-            }
-        }
-
-        #[cfg(feature = "domain")]
-        Commands::HmdsServer {
-            host,
-            port,
-            path,
-            timeout,
-            user,
-            group,
-        } => match hmds::server(host, port, path, timeout, user, group).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(CliError::SocketError(e)),
-        },
-        #[cfg(not(feature = "domain"))]
-        Commands::HmdsServer {
-            host,
-            port,
-            timeout,
-        } => match hmds::server(
-            host,
-            port,
-            #[cfg(feature = "domain")]
-            path,
-            timeout,
-            None,
-            None,
-        )
-        .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(CliError::SocketError(e)),
-        },
     };
 
     if let Err(e) = result {

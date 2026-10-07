@@ -33,6 +33,3 @@ brooks-lib = { path = "lib", default-features = false, features = ["serializable
 [target.'cfg(not(unix))'.dependencies]
 brooks-lib = { path = "lib", default-features = false, features = ["serializable_logs", "hmds", "mi_all_processors", "logger"] }
 
-[features]
-domain = []
-default = []

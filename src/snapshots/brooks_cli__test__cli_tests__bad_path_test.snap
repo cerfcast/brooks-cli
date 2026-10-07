@@ -9,25 +9,13 @@ info:
     - "--path"
     - "./not-found/"
 ---
-success: true
-exit_code: 0
+success: false
+exit_code: 2
 ----- stdout -----
-Error: Configuration error: Could not open connection to HMD server over UNIX domain socket at path ./not-found/
-Usage: [BROOKS_CLI] [OPTIONS] <COMMAND>
-
-Commands:
-  compile      
-  analyze      
-  interpret    
-  explorer     
-  proxy        
-  hmds-server  
-  help         Print this message or the help of the given subcommand(s)
-
-Options:
-      --debug...             
-      --log-file <LOG_FILE>  
-  -h, --help                 Print help
-
 
 ----- stderr -----
+error: unrecognized subcommand 'proxy'
+
+Usage: [BROOKS_CLI] [OPTIONS] <COMMAND>
+
+For more information, try '--help'.

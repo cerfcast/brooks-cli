@@ -36,18 +36,6 @@ mod cli_tests {
     }
 
     #[test]
-    fn bad_path_test() {
-        apply_binary_name_filters!();
-        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
-            "proxy",
-            "--port",
-            "8080",
-            "--path",
-            "./not-found/"
-        ]));
-    }
-
-    #[test]
     fn simple_test() {
         apply_binary_name_filters!();
         assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
@@ -159,21 +147,6 @@ mod cli_tests {
             "analyze",
             "--path",
             "tests/analysis_error4.mel"
-        ]));
-    }
-
-    #[cfg(not(feature = "domain"))]
-    #[test]
-    fn no_domain_feature_test() {
-        apply_binary_name_filters!();
-        assert_cmd_snapshot!(Command::new(get_cargo_bin("brooks-cli")).args([
-            "hmds-server",
-            "--port",
-            "8081",
-            "--timeout",
-            "25s",
-            "--user",
-            "testing_user",
         ]));
     }
 }
